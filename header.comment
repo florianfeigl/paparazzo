@@ -1,0 +1,24 @@
+// ----------------------------------------------------------------------------
+// File             : paparazzo.ino
+// Author           : Florian Feigl, BSc (florian.feigl@plus.ac.at)
+// Supervisor       : Prof. Dr. Obermeyer (gerhard.obermeyer@plus.ac.at)
+// Modified         : 27.02.2025
+// Version          : 0.7
+//
+// Abstract         :
+// This program serves the purpose of moving two stepper motors to scan a two
+// dimensional area with cameras.
+//
+// Libraries        :
+// - <AccelStepper.h>
+//
+// Hardware         :
+// - Arduino Uno Rev3
+// - Nema 17 Stepper Motors
+// - TB6600 Stepper Motor Drivers
+// - Raspberry Pi 4 Model B
+//
+// License/Disclaimer:
+// This project is done in context of an academic course and can only be
+// used for learning or demonstration purposes.
+// ----------------------------------------------------------------------------

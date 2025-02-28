@@ -1,0 +1,22 @@
+Looking in indexes: https://pypi.org/simple, https://www.piwheels.org/simple
+Requirement already satisfied: pyserial==3.5 in ./venv/lib/python3.11/site-packages (from -r requirements.txt (line 1)) (3.5)
+Collecting picamera2==0.3.25
+  Using cached https://www.piwheels.org/simple/picamera2/picamera2-0.3.25-py3-none-any.whl (114 kB)
+Collecting numpy
+  Using cached numpy-2.2.3-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (14.4 MB)
+Collecting PiDNG
+  Using cached pidng-4.0.9.tar.gz (21 kB)
+  Preparing metadata (setup.py): started
+  Preparing metadata (setup.py): finished with status 'done'
+Collecting piexif
+  Using cached https://www.piwheels.org/simple/piexif/piexif-1.1.3-py2.py3-none-any.whl (20 kB)
+Collecting pillow
+  Using cached pillow-11.1.0-cp311-cp311-manylinux_2_28_aarch64.whl (4.4 MB)
+Collecting simplejpeg
+  Using cached simplejpeg-1.8.2-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (446 kB)
+Collecting v4l2-python3
+  Using cached https://www.piwheels.org/simple/v4l2-python3/v4l2_python3-0.3.5-py3-none-any.whl (22 kB)
+Collecting python-prctl
+  Using cached python-prctl-1.8.1.tar.gz (28 kB)
+  Preparing metadata (setup.py): started
+  Preparing metadata (setup.py): finished with status 'error'

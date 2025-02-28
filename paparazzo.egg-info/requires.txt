@@ -1,0 +1,5 @@
+pyserial
+picamera2
+tk
+logging
+setuptools
