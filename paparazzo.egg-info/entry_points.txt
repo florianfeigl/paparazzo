@@ -1,2 +1,2 @@
 [console_scripts]
-paparazzo = paparazzo.gui:main
+paparazzo = packages.gui:main

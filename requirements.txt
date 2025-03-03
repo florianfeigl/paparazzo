@@ -1,2 +1,6 @@
 pyserial==3.5
 picamera2==0.3.25
+jinja2
+pyyaml
+ply
+#rpi-libcamera==0.1a8

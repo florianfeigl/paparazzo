@@ -1,10 +1,11 @@
+README.md
 setup.py
 packages/__init__.py
 packages/camera.py
 packages/config.py
 packages/gui.py
 packages/logger.py
-packages/serial.py
+packages/serial_comm.py
 paparazzo.egg-info/PKG-INFO
 paparazzo.egg-info/SOURCES.txt
 paparazzo.egg-info/dependency_links.txt

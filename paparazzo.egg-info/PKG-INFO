@@ -5,9 +5,6 @@ Summary: Paparazzo Project: Arduino- und Kamera-Integration
 Author: Florian Feigl
 Author-email: florian.feigl@stud.plus.ac.at
 Requires-Dist: pyserial
-Requires-Dist: picamera2
-Requires-Dist: tk
-Requires-Dist: logging
 Requires-Dist: setuptools
 Dynamic: author
 Dynamic: author-email
