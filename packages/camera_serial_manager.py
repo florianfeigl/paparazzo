@@ -8,15 +8,16 @@ import time
 import serial
 from picamera2 import Picamera2
 
-from packages.config import (ARDUINO_CLI_PATH, BAUD_RATE, CONFIG_FILE, FQBN,
-                             IMAGES_DIR, SERIAL_PORT, TEMPLATE_FILE)
+from packages.config import (ARDUINO_CLI_PATH, BAUD_RATE, CONFIG_FILE,
+                             FIRMWARE_DIR, FQBN, IMAGES_DIR, SERIAL_PORT,
+                             TEMPLATE_FILE)
 from packages.logger import log_message
 
 
 class CameraSerialManager:
     def __init__(self):
         """Initialisiert Kamera und serielle Verbindung."""
-        self.PASS_COUNT = 1  # Startwert
+        self.PASS_COUNT = 0  # Startwert
         self.MOVE_COUNT = 0  # Startwert
         self.picam = None
         self.serial_connection = None
@@ -33,9 +34,7 @@ class CameraSerialManager:
             time.sleep(2)  # Wartezeit für Kamera-Initialisierung
 
             if self.picam is None:
-                log_message(
-                    "Kamera konnte nicht initialisiert werden!", "error"
-                )
+                log_message("Kamera konnte nicht initialisiert werden!", "error")
                 return
 
             log_message("Kamera erfolgreich erstellt.", "info")
@@ -45,9 +44,7 @@ class CameraSerialManager:
 
             # Prüfen, ob Kamera verfügbar ist
             if not hasattr(self.picam, "camera_config"):
-                log_message(
-                    "Kamera-Konfiguration ist nicht verfügbar!", "error"
-                )
+                log_message("Kamera-Konfiguration ist nicht verfügbar!", "error")
                 return
 
             log_message("Kamera wird konfiguriert...", "info")
@@ -113,7 +110,7 @@ class CameraSerialManager:
         log_message("Kompiliere Sketch...", "info")
         try:
             subprocess.run(
-                [ARDUINO_CLI_PATH, "compile", "--fqbn", FQBN, "."], check=True
+                [ARDUINO_CLI_PATH, "compile", "--fqbn", FQBN, FIRMWARE_DIR], check=True
             )
             log_message("Kompilierung erfolgreich.", "info")
         except subprocess.CalledProcessError as e:
@@ -125,7 +122,15 @@ class CameraSerialManager:
         log_message("Lade hoch...", "info")
         try:
             subprocess.run(
-                [ARDUINO_CLI_PATH, "upload", "-p", SERIAL_PORT, "--fqbn", FQBN, "."],
+                [
+                    ARDUINO_CLI_PATH,
+                    "upload",
+                    "-p",
+                    SERIAL_PORT,
+                    "--fqbn",
+                    FQBN,
+                    FIRMWARE_DIR,
+                ],
                 check=True,
             )
             log_message("Upload erfolgreich.", "info")
@@ -136,7 +141,7 @@ class CameraSerialManager:
     def start_polling(self):
         """Startet das Polling in einem separaten Thread."""
         if hasattr(self, "polling_thread") and self.polling_thread is not None:
-            log_message("[WARNING] Polling-Thread läuft bereits!", "warning")
+            log_message("Polling-Thread läuft bereits!", "warning")
             return
 
         log_message("Starte Arduino-Polling-Thread...")
@@ -150,23 +155,44 @@ class CameraSerialManager:
             log_message("Serielle Verbindung nicht verfügbar!", "error")
             return
 
-        while getattr(
-            self, "polling_active", True
-        ):  # `polling_active` prüft, ob der Thread weiterlaufen soll
+        while self.polling_active:
             try:
                 if self.serial_connection.in_waiting > 0:
-                    line = (
+                    raw_line = (
                         self.serial_connection.readline()
                         .decode("utf-8", errors="ignore")
                         .strip()
                     )
-                    log_message(f"Arduino: {line}")
-                    if line == "DONE":
-                        log_message("Arduino-Prozess abgeschlossen.")
-                        break
+
+                    # Debugging-Log
+                    log_message(f"DEBUG: Empfangene Zeile: {raw_line}")
+
+                    # Falls die Nachricht im falschen Format ist, logge sie
+                    if not raw_line.startswith("<") or not raw_line.endswith(">"):
+                        log_message(
+                            f"Ungültiges Format empfangen: {raw_line}",
+                            "warning",
+                        )
+                        continue
+
+                    # Inhalt extrahieren
+                    command = raw_line[1:-1]
+
+                    if command == "MOVE_COMPLETED":
+                        log_message(
+                            "'MOVE_COMPLETED' empfangen, nehme Foto auf.", "info"
+                        )
+                        self.take_photo(self.PASS_COUNT, self.MOVE_COUNT)
+                        self.MOVE_COUNT += 1
+                        self.send_command("NEXT")
+                    elif command == "DONE":
+                        log_message("'DONE' empfangen, beende Polling.", "info")
+                        self.stop_polling()
+
             except Exception as e:
-                log_message(f"Fehler im Polling: {e}")
+                log_message(f"Fehler im Polling: {e}", "error")
                 break
+
             time.sleep(0.1)  # CPU-Last reduzieren
 
     def stop_polling(self):

@@ -10,6 +10,7 @@ from packages.config import LOGS_DIR
 gui_instance = None
 logger = None  # Globale Logger-Variable
 
+
 class TextWidgetHandler(logging.Handler):
     """
     Leitet alle Log-Ausgaben ins Text-Widget (falls es existiert).
@@ -18,12 +19,16 @@ class TextWidgetHandler(logging.Handler):
 
     def emit(self, record):
         msg = self.format(record)
-        if gui_instance and hasattr(gui_instance, "log_text"):
+        if (
+            gui_instance
+            and hasattr(gui_instance, "log_text")
+            and gui_instance.log_text.winfo_exists()
+        ):
             gui_instance.log_text.insert("end", msg + "\n")
             gui_instance.log_text.see("end")
             gui_instance.after(100, gui_instance.log_text.update_idletasks)
         else:
-            # Fallback: Wenn keine GUI da ist, schicken wir's einfach ins Terminal.
+            # Falls keine GUI vorhanden ist, sende an das Terminal
             print(msg)
 
 

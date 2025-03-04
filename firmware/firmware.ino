@@ -1,37 +1,52 @@
 #include "config.h"
 #include <AccelStepper.h>
 
+// Serielle Schnittstelle
+const int SERIAL_BAUD = 9600;
+
 // AccelStepper-Objekte anlegen (DRIVER-Modus: stepPin, dirPin)
-AccelStepper stepper_column(AccelStepper::DRIVER, 12, 13);
-AccelStepper stepper_row(AccelStepper::DRIVER, 6, 7);
+AccelStepper stepper_column(AccelStepper::DRIVER, STEP_PIN_COLUMN, DIR_PIN_COLUMN);
+AccelStepper stepper_row(AccelStepper::DRIVER, STEP_PIN_ROW, DIR_PIN_ROW);
 
 // Endstufen-Pins (Enable)
-const int enable_row_stepper = 11;
-const int enable_column_stepper = 5;
+const int enable_stepper_rows = ENA_PIN_ROW;
+const int enable_stepper_columns = ENA_PIN_COLUMN;
+
+// Bewegungseinstellungen
+const int max_speed = MAX_SPEED;
+const int accel = ACCEL;
 
 // 1/16 Microstepping @ 200 Steps/Rev => 3200 Steps/Umdrehung
-const int steps_per_revolution = 3200;
-const long distance_columns = 1.2 * steps_per_revolution;     // Motordistanz zwischen Spalten bei 24-well Platte
-const long distance_rows = 0.24 * steps_per_revolution; // Motordistanz zwischen Reihen bei 24-well Platte
-
-// Geschwindigkeiten und Beschleunigung einstellen
-const int max_speed = 8000;
-const int accel = 3200;
-
-stepper_column.setMaxSpeed(max_speed);
-stepper_column.setAcceleration(accel);
-stepper_row.setMaxSpeed(max_speed);
-stepper_row.setAcceleration(accel);
+const int steps_per_revolution = STEPS_PER_REV;
+const long distance_columns = 1.2 * steps_per_revolution;
+const long distance_rows = 0.24 * steps_per_revolution;
 
 // Startposition als 0 definieren
-stepper_column.setCurrentPosition(0);
-stepper_row.setCurrentPosition(0);
+long positions_column[COLUMNS];
+long positions_row[ROWS];
+
+// Timeout über den Wells
+const int response_timeout = RESPONSE_TIMEOUT;
+
+// Variablen für Wiederholungen und Pausenzeit (müssen definiert sein!)
+const int repeats = REPEATS;
+const int pause_ms = PAUSE_MS;
 
 String serialBuffer = "";  // Buffer für serielle Eingaben
 
 void setup() {
     Serial.begin(SERIAL_BAUD);
     Serial.flush();
+
+    // Motor-Geschwindigkeiten und Beschleunigung setzen (muss in `setup()` sein)
+    stepper_column.setAcceleration(accel);
+    stepper_column.setMaxSpeed(max_speed);
+    stepper_row.setAcceleration(accel);
+    stepper_row.setMaxSpeed(max_speed);
+
+    // Startposition zurücksetzen
+    stepper_column.setCurrentPosition(0);
+    stepper_row.setCurrentPosition(0);
 
     // Schrittweiten vorbereiten
     for (int i = 0; i < 6; i++) {
@@ -41,8 +56,17 @@ void setup() {
         positions_row[i] = i * -distance_rows;
     }
 
-    pinMode(ENABLE_PIN, OUTPUT);
-    digitalWrite(ENABLE_PIN, LOW);
+    // Enable-Pins als OUTPUT setzen
+    pinMode(enable_stepper_rows, OUTPUT);
+    pinMode(enable_stepper_columns, OUTPUT);
+
+    // Motoren deaktivieren (HIGH = disabled)
+    digitalWrite(enable_stepper_rows, HIGH);
+    digitalWrite(enable_stepper_columns, HIGH);
+
+    // Treiber aktivieren (LOW = enabled)
+    digitalWrite(enable_stepper_rows, LOW);
+    digitalWrite(enable_stepper_columns, LOW);
 
     waitForStartCommand();
 }
@@ -62,6 +86,8 @@ void loop() {
         Serial.println("✅ Run finished. Waiting " + String(pause_ms) + " ms for next run.");
         delay(pause_ms);
     }
+    sendStatus("DONE");
+    Serial.println("✅ ALL runs finished. Cutting polling.");
     while (true) {}
 }
 
@@ -96,7 +122,7 @@ void waitForStartCommand() {
             String command = Serial.readStringUntil('\n');
             command.trim();
             if (command.equals("START")) {
-                Serial.println("[INFO] Start command received. Starting program...");
+                Serial.println("Start command received. Starting program...");
                 break;
             }
         }
@@ -106,7 +132,7 @@ void waitForStartCommand() {
 void waitForNextCommand() {
     unsigned long startTime = millis();
     while (true) {
-        if (millis() - startTime > response_timeout) {
+        if (millis() - startTime > RESPONSE_TIMEOUT) {
             Serial.println("⏳ Timeout: No response from Raspberry Pi. Skipping...");
             break;
         }

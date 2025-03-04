@@ -18,9 +18,10 @@
 #define COLUMNS 6
 #define ROWS 4
 
-#define RESPONSE_TIMEOUT 5000 
+#define RESPONSE_TIMEOUT 3500
 
-#define REPEATS {{REPEATS_PLACEHOLDER}}
-#define PAUSE_MS {{PAUSE_PLACEHOLDER}}
+// Laufeinstellungen 
+#define REPEATS 2
+#define PAUSE_MS 5000
 
 #endif // CONFIG_H

@@ -41,13 +41,19 @@ class Paparazzo(tk.Tk):
         # 1) Zuerst GUI-Elemente erstellen
         self.create_widgets()
 
+        # `log_text` Existenzcheck
+        if not hasattr(self, "log_text"):
+            log_message("log_text Widget existiert nicht!", "error")
+            return
+
+        # Manager für Kamera & serielle Schnittstelle
+        set_gui_instance(self)
+
         # Logger initialisieren
         self.logger = setup_logging()
         log_message("Starte Paparazzo GUI...", "info")
         log_message("Initialisiere Log System...", "info")
 
-        # Manager für Kamera & serielle Schnittstelle
-        set_gui_instance(self)
         self.manager = CameraSerialManager()  # führt init_camera bereits aus!
 
         # 3) Zum Schluss Polling für Arduino starten
@@ -63,14 +69,11 @@ class Paparazzo(tk.Tk):
         # Wiederholungen: [<] [Textfeld] [>]
         repeats_frame = ttk.Frame(self)
         repeats_frame.grid(row=0, column=0, padx=10)
-        tk.Label(repeats_frame, text="Wiederholungen:", anchor="e").grid(
-            row=0, column=0, columnspan=3, padx=10, pady=5
-        )
         self.repeats_var = tk.IntVar(value=2)
         minus_repeats = ttk.Button(
-            repeats_frame, text="<", command=self.decrement_repeats, width=5
+            repeats_frame, text="<", command=self.decrement_repeats, width=7
         )
-        minus_repeats.grid(row=1, column=0, padx=10, ipadx=14, ipady=14)
+        minus_repeats.grid(row=0, column=0, padx=10, ipadx=14, ipady=14)
         repeats_entry = ttk.Entry(
             repeats_frame,
             textvariable=self.repeats_var,
@@ -79,72 +82,80 @@ class Paparazzo(tk.Tk):
             justify="center",
             style="CenterEntry.TEntry",
         )
-        repeats_entry.grid(row=1, column=1)
+        repeats_entry.grid(row=0, column=1)
         plus_repeats = ttk.Button(
-            repeats_frame, text=">", command=self.increment_repeats, width=5
+            repeats_frame, text=">", command=self.increment_repeats, width=7
         )
-        plus_repeats.grid(row=1, column=2, padx=10, ipadx=14, ipady=14)
+        plus_repeats.grid(row=0, column=2, padx=10, ipadx=14, ipady=14)
+        tk.Label(repeats_frame, text="Wiederholungen (Standard: 2)", anchor="e").grid(
+            row=1, column=0, columnspan=3, padx=20
+        )
 
         # Pause (in Minuten): [<] [Textfeld] [>]
         pause_frame = ttk.Frame(self)
         pause_frame.grid(row=1, column=0, padx=10)
-        tk.Label(pause_frame, text="Pause (Minuten):", anchor="e").grid(
-            row=0, column=0, columnspan=3, padx=10, pady=5
+        tk.Label(pause_frame, text="Pause Minuten (Standard: 1)", anchor="e").grid(
+            row=0, column=0, columnspan=3, padx=10
         )
         self.pause_var = tk.IntVar(value=1)
         minus_pause = ttk.Button(
-            pause_frame, text="<", command=self.decrement_pause, width=5
+            pause_frame, text="<", command=self.decrement_pause, width=7
         )
-        minus_pause.grid(row=1, column=0, padx=10, ipadx=14, ipady=14)
+        minus_pause.grid(row=1, column=0, padx=20, ipadx=14, ipady=14)
         pause_entry = ttk.Entry(
             pause_frame,
             textvariable=self.pause_var,
             width=3,
-            font=("Helvetica", 26),
+            font=("Helvetica", 25),
             justify="center",
             style="CenterEntry.TEntry",
         )
         pause_entry.grid(row=1, column=1)
         plus_pause = ttk.Button(
-            pause_frame, text=">", command=self.increment_pause, width=5
+            pause_frame, text=">", command=self.increment_pause, width=7
         )
-        plus_pause.grid(row=1, column=2, padx=10, ipadx=14, ipady=14)
+        plus_pause.grid(row=1, column=2, padx=20, ipadx=14, ipady=14)
 
         # Reihen in Spalte 2
         # Generieren & Hochladen
         gen_upload_btn = ttk.Button(
             self,
-            text="Generieren & Hochladen",
+            text="GENERIEREN & LADEN",
             command=self.on_generate_and_upload,
-            width=20,
+            width=18,
         )
-        gen_upload_btn.grid(row=0, column=1, pady=10, ipadx=14, ipady=14)
+        gen_upload_btn.grid(row=0, column=1, ipadx=14, ipady=14)
 
         # Programm START
         start_btn = ttk.Button(
             self,
-            text="Lauf STARTEN",
+            text="STARTEN",
             command=self.on_start_program,
-            width=20,
+            width=18,
         )
         start_btn.grid(row=1, column=1, padx=10, ipadx=14, ipady=14)
 
         # Reihen in Spalte 3
         # Programm ABBRUCH
         abort_btn = ttk.Button(
-            self, text="Lauf ABBRECHEN", command=self.on_abort, width=20
+            self, text="ZURÜCKSETZEN", command=self.on_abort, width=18
         )
         abort_btn.grid(row=0, column=2, padx=10, ipadx=14, ipady=14)
 
         # Programm SCHLIESSEN
         close_button = ttk.Button(
-            self, text="Programm SCHLIESSEN", command=self.on_close, width=20
+            self, text="SCHLIESSEN", command=self.on_close, width=20
         )
         close_button.grid(row=1, column=2, padx=10, ipadx=14, ipady=14)
 
-        # Log-Text + Scrollbar
-        self.log_text = tk.Text(self, wrap="word", height=16, width=80)
-        self.log_text.grid(row=5, column=0, columnspan=3, padx=5, pady=5, sticky="ew")
+        # Log-Text-Widget initialisieren
+        self.log_text = tk.Text(self, wrap="word", height=15, width=25)
+        self.log_text.grid(row=5, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
+
+        # Scrollbar für das Log-Text-Widget
+        scrollbar = ttk.Scrollbar(self, command=self.log_text.yview)
+        scrollbar.grid(row=5, column=3, sticky="ns")  # Scrollbar in column 2
+        self.log_text["yscrollcommand"] = scrollbar.set
 
         scrollbar = ttk.Scrollbar(self, command=self.log_text.yview)
         scrollbar.grid(row=5, column=3, sticky="ns")
@@ -154,21 +165,7 @@ class Paparazzo(tk.Tk):
 
         # MANUELLE AKTIONEN
         ## Manual NEXT
-        # manual_next_btn = ttk.Button(
-        #    button_frame1,
-        #    text="Manueller NEXT",
-        #    command=on_manual_next,
-        #    width=20,
-        # )
-        # manual_next_btn.grid(row=0, column=2, padx=10, ipadx=7, ipady=7)
         ## Manual PHOTO
-        # photo_btn = ttk.Button(
-        #    button_frame2,
-        #    text="Manuelles Foto",
-        #    command=manual_take_photo,
-        #    width=20,
-        # )
-        # photo_btn.grid(row=0, column=1, padx=10, ipadx=7, ipady=7)
 
     # GENERIEREN & HOCHLADEN
     def on_generate_and_upload(self):
@@ -257,8 +254,8 @@ class Paparazzo(tk.Tk):
 
         # 4️⃣ Tkinter-Fenster sauber schließen
         log_message("GUI wird zerstört...", "info")
+        set_gui_instance(None)
         self.destroy()
-        log_message("GUI zerört.", "info")
 
     # PROGRAMM-START
     def on_start_program(self):

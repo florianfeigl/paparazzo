@@ -15,6 +15,7 @@ PASS_FOLDER_NAME = None
 BASE_DIR = "/home/pi/Paparazzo"
 IMAGES_DIR = "/home/pi/Paparazzo/images"  # Hauptbasis für alle Runs
 LOGS_DIR = "/home/pi/Paparazzo/logs"
+FIRMWARE_DIR = "/home/pi/Paparazzo/firmware"
 
 # RUNS
 REPEATS = 0  # GELESEN AUS GUI
