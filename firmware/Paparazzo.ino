@@ -60,7 +60,7 @@ void loop() {
         }
         returnToHome();
         Serial.println("✅ Run finished. Waiting " + String(pause_ms) + " ms for next run.");
-        delay(PAUSE_MS);
+        delay(pause_ms);
     }
     while (true) {}
 }
@@ -125,7 +125,7 @@ void waitForNextCommand() {
 }
 
 void handleAbort() {
-    Serial.println("[ERROR] Aborting operation, returning to home position.");
+    Serial.println("Aborting operation, returning to home position.");
     returnToHome();
     while (true) {}
 }

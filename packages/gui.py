@@ -7,7 +7,8 @@ from tkinter import ttk
 
 from packages.camera_serial_manager import CameraSerialManager
 from packages.config import IMAGES_DIR, PASS_COUNT, RUN_DIR
-from packages.logger import set_gui_instance, gui_instance, log_message, setup_logging
+from packages.logger import (gui_instance, log_message, set_gui_instance,
+                             setup_logging)
 
 # Logger zuweisen
 logger = setup_logging()
@@ -27,7 +28,7 @@ class Paparazzo(tk.Tk):
         # GUI Titel
         self.title("Paparazzo GUI")
 
-        # Setze das Theme für eine bessere Darstellung
+        # GUI Darstellung
         style = ttk.Style()
         style.theme_use("clam")  # Alternativ: 'alt', 'default', 'classic'
         style.configure("CenterEntry.TEntry", padding=(0, 10, 0, 10))
@@ -37,22 +38,20 @@ class Paparazzo(tk.Tk):
         h = self.winfo_screenheight()
         self.geometry(f"{w}x{h}+0+0")
 
-        # Manager für Kamera & serielle Schnittstelle
-        self.manager = CameraSerialManager()
-
         # 1) Zuerst GUI-Elemente erstellen
         self.create_widgets()
 
-        set_gui_instance(self)
         # Logger initialisieren
         self.logger = setup_logging()
         log_message("Starte Paparazzo GUI...", "info")
+        log_message("Initialisiere Log System...", "info")
 
-        # 2) Dann Kamera initialisieren (logger() braucht schon log_text!)
-        self.manager.init_camera()
+        # Manager für Kamera & serielle Schnittstelle
+        set_gui_instance(self)
+        self.manager = CameraSerialManager()  # führt init_camera bereits aus!
 
         # 3) Zum Schluss Polling für Arduino starten
-        self.after(100, self.manager.poll_arduino)  
+        self.after(100, self.manager.start_polling)
 
     def create_widgets(self):
         """Erstellt alle Tkinter-Widgets und legt das Layout fest."""
@@ -60,6 +59,7 @@ class Paparazzo(tk.Tk):
         self.columnconfigure(0, weight=1)
         self.columnconfigure(1, weight=1)
 
+        # Reihen in Spalte 1
         # Wiederholungen: [<] [Textfeld] [>]
         repeats_frame = ttk.Frame(self)
         repeats_frame.grid(row=0, column=0, padx=10)
@@ -70,7 +70,7 @@ class Paparazzo(tk.Tk):
         minus_repeats = ttk.Button(
             repeats_frame, text="<", command=self.decrement_repeats, width=5
         )
-        minus_repeats.grid(row=1, column=0, padx=10, ipadx=10, ipady=14)
+        minus_repeats.grid(row=1, column=0, padx=10, ipadx=14, ipady=14)
         repeats_entry = ttk.Entry(
             repeats_frame,
             textvariable=self.repeats_var,
@@ -83,7 +83,7 @@ class Paparazzo(tk.Tk):
         plus_repeats = ttk.Button(
             repeats_frame, text=">", command=self.increment_repeats, width=5
         )
-        plus_repeats.grid(row=1, column=2, padx=10, ipadx=10, ipady=14)
+        plus_repeats.grid(row=1, column=2, padx=10, ipadx=14, ipady=14)
 
         # Pause (in Minuten): [<] [Textfeld] [>]
         pause_frame = ttk.Frame(self)
@@ -95,7 +95,7 @@ class Paparazzo(tk.Tk):
         minus_pause = ttk.Button(
             pause_frame, text="<", command=self.decrement_pause, width=5
         )
-        minus_pause.grid(row=1, column=0, padx=10, ipadx=10, ipady=14)
+        minus_pause.grid(row=1, column=0, padx=10, ipadx=14, ipady=14)
         pause_entry = ttk.Entry(
             pause_frame,
             textvariable=self.pause_var,
@@ -108,45 +108,46 @@ class Paparazzo(tk.Tk):
         plus_pause = ttk.Button(
             pause_frame, text=">", command=self.increment_pause, width=5
         )
-        plus_pause.grid(row=1, column=2, padx=10, ipadx=10, ipady=14)
+        plus_pause.grid(row=1, column=2, padx=10, ipadx=14, ipady=14)
 
+        # Reihen in Spalte 2
         # Generieren & Hochladen
         gen_upload_btn = ttk.Button(
             self,
             text="Generieren & Hochladen",
             command=self.on_generate_and_upload,
-            width=25,
+            width=20,
         )
-        gen_upload_btn.grid(row=2, column=0, pady=10, ipadx=14, ipady=14)
+        gen_upload_btn.grid(row=0, column=1, pady=10, ipadx=14, ipady=14)
 
-        # PROGRAMMFUNKTIONEN
         # Programm START
         start_btn = ttk.Button(
             self,
-            text="Programm START",
+            text="Lauf STARTEN",
             command=self.on_start_program,
             width=20,
         )
-        start_btn.grid(row=0, column=1, padx=10, ipadx=14, ipady=14)
+        start_btn.grid(row=1, column=1, padx=10, ipadx=14, ipady=14)
 
+        # Reihen in Spalte 3
         # Programm ABBRUCH
         abort_btn = ttk.Button(
-            self, text="Programm ABBRUCH", command=self.on_abort, width=20
+            self, text="Lauf ABBRECHEN", command=self.on_abort, width=20
         )
-        abort_btn.grid(row=1, column=1, padx=10, ipadx=14, ipady=14)
+        abort_btn.grid(row=0, column=2, padx=10, ipadx=14, ipady=14)
 
         # Programm SCHLIESSEN
         close_button = ttk.Button(
             self, text="Programm SCHLIESSEN", command=self.on_close, width=20
         )
-        close_button.grid(row=2, column=1, padx=10, ipadx=14, ipady=14)
+        close_button.grid(row=1, column=2, padx=10, ipadx=14, ipady=14)
 
         # Log-Text + Scrollbar
-        self.log_text = tk.Text(self, wrap="word", height=50, width=70)
-        self.log_text.grid(row=5, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
+        self.log_text = tk.Text(self, wrap="word", height=16, width=80)
+        self.log_text.grid(row=5, column=0, columnspan=3, padx=5, pady=5, sticky="ew")
 
         scrollbar = ttk.Scrollbar(self, command=self.log_text.yview)
-        scrollbar.grid(row=5, column=2, sticky="ns")
+        scrollbar.grid(row=5, column=3, sticky="ns")
 
         # WICHTIG: Das Text-Widget muss dem Scrollbar mitteilen, wann es gescrollt wird.
         self.log_text.configure(yscrollcommand=scrollbar.set)
@@ -194,15 +195,12 @@ class Paparazzo(tk.Tk):
 
         # 1) config.h generieren
         self.manager.generate_config_file(REPEATS, PAUSE_MS)
-        log_message("Generiere config.h...", "info")
 
         # 2) Kompilieren
         self.manager.compile_sketch()
-        log_message("Kompiliere Sketch...", "info")
 
         # 3) Hochladen
         self.manager.upload_sketch()
-        log_message("Lade hoch...", "info")
 
         log_message("Fertig!", "info")
 
@@ -239,8 +237,28 @@ class Paparazzo(tk.Tk):
 
     # SCHLIESSEN
     def on_close(self):
-        log_message("Programm beendet.", "info")
-        Paparazzo.destroy(self)
+        """Sauberes Beenden der GUI und aller verbundenen Prozesse."""
+        log_message("Beende Programm...", "info")
+
+        # 1️⃣ Falls Kamera läuft, stoppen
+        if self.manager.picam:
+            log_message("Stoppe Kamera...", "info")
+            self.manager.picam.stop()
+            log_message("Kamera gestoppt.", "info")
+
+        # 2️⃣ Serielle Verbindung schließen, falls aktiv
+        if self.manager.serial_connection and self.manager.serial_connection.is_open:
+            log_message("Schließe serielle Verbindung...", "info")
+            self.manager.serial_connection.close()
+            log_message("Serielle Verbindung geschlossen.", "info")
+
+        # 3️⃣ Eventuelle Threads oder laufende Funktionen beenden (z. B. `poll_arduino`)
+        self.manager.stop_polling()
+
+        # 4️⃣ Tkinter-Fenster sauber schließen
+        log_message("GUI wird zerstört...", "info")
+        self.destroy()
+        log_message("GUI zerört.", "info")
 
     # PROGRAMM-START
     def on_start_program(self):
@@ -264,8 +282,6 @@ class Paparazzo(tk.Tk):
             )
             return
 
-        REPEATS = REPEATS
-
         self.start_pass_folder()
 
         log_message("Sende 'START' an Arduino...", "info")
@@ -277,6 +293,5 @@ def main():
     app.mainloop()
 
 
-# STARTPUNKT
 if __name__ == "__main__":
     main()

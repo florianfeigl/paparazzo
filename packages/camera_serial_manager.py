@@ -2,62 +2,69 @@
 
 import os
 import subprocess
+import threading
 import time
 
 import serial
 from picamera2 import Picamera2
 
 from packages.config import (ARDUINO_CLI_PATH, BAUD_RATE, CONFIG_FILE, FQBN,
-                             IMAGES_DIR, MOVE_COUNT, PASS_COUNT, SERIAL_PORT,
-                             TEMPLATE_FILE)
+                             IMAGES_DIR, SERIAL_PORT, TEMPLATE_FILE)
 from packages.logger import log_message
 
 
 class CameraSerialManager:
     def __init__(self):
         """Initialisiert Kamera und serielle Verbindung."""
-        self.picam = None
-        self.serial_connection = None
         self.PASS_COUNT = 1  # Startwert
         self.MOVE_COUNT = 0  # Startwert
+        self.picam = None
+        self.serial_connection = None
+        self.polling_thread = None
+        self.polling_active = None
         self.init_camera()
         self.init_serial()
 
     def init_camera(self):
         """Sichere Initialisierung der Kamera mit Fehlerprüfung."""
-        log_message("Starte init_camera...")
+        log_message("Starte init_camera...", "info")
         try:
             self.picam = Picamera2()
             time.sleep(2)  # Wartezeit für Kamera-Initialisierung
 
             if self.picam is None:
                 log_message(
-                    "[ERROR] Kamera konnte nicht initialisiert werden!", "error"
+                    "Kamera konnte nicht initialisiert werden!", "error"
                 )
                 return
 
-            log_message("[INFO] Kamera erfolgreich erstellt.")
+            log_message("Kamera erfolgreich erstellt.", "info")
 
             # DEBUG: Liste der Kamera-Modi abrufen
-            log_message(f"[DEBUG] Kamera-Modi: {self.picam.sensor_modes}")
+            log_message(f"Kamera-Modi: {self.picam.sensor_modes}", "debug")
 
-            # Falls `camera_config` None ist, weiter abbrechen
-            if self.picam.camera_config is None:
-                log_message("[ERROR] Kamera-Konfiguration ist None!", "error")
+            # Prüfen, ob Kamera verfügbar ist
+            if not hasattr(self.picam, "camera_config"):
+                log_message(
+                    "Kamera-Konfiguration ist nicht verfügbar!", "error"
+                )
                 return
 
-            log_message("[INFO] Kamera wird konfiguriert...")
+            log_message("Kamera wird konfiguriert...", "info")
             self.picam.configure(self.picam.create_still_configuration())
             self.picam.start_preview()
 
-            log_message("[INFO] Kamera wird gestartet...")
-            self.picam.start()
+            if self.picam.started:
+                log_message("Kamera läuft bereits, überspringe start().", "info")
+            else:
+                log_message("Kamera wird gestartet...", "info")
+                self.picam.start()
 
-            log_message("[INFO] Kamera erfolgreich gestartet.")
+            log_message("Kamera erfolgreich gestartet.", "info")
 
-       # except Exception as e:
-       #     log_message(f"[ERROR] Kamera-Fehler: {e}", "error")
-       #     self.picam = None
+        except Exception as e:
+            log_message(f"Kamera-Fehler: {e}", "error")
+            self.picam = None
 
     def init_serial(self):
         """Öffnet die serielle Verbindung zum Arduino."""
@@ -78,17 +85,18 @@ class CameraSerialManager:
         else:
             log_message("Serielle Verbindung nicht verfügbar!", "error")
 
-    def generate_config_file(self, REPEATS, PAUSE):
+    def generate_config_file(self, REPEATS, PAUSE_MS):
         """
         Liest config_template.h, ersetzt Platzhalter und schreibt config.h.
         """
+        log_message("Generiere config.h...", "info")
         try:
             with open(TEMPLATE_FILE, "r") as template:
                 content = template.read()
 
             # Platzhalter ersetzen
             content = content.replace("{{REPEATS_PLACEHOLDER}}", str(REPEATS))
-            content = content.replace("{{PAUSE_PLACEHOLDER}}", str(PAUSE))
+            content = content.replace("{{PAUSE_PLACEHOLDER}}", str(PAUSE_MS))
 
             # Neue config.h schreiben
             with open(CONFIG_FILE, "w") as config:
@@ -102,6 +110,7 @@ class CameraSerialManager:
     # SKETCH KOMPILIEREN
     def compile_sketch(self):
         """Ruft arduino-cli compile auf."""
+        log_message("Kompiliere Sketch...", "info")
         try:
             subprocess.run(
                 [ARDUINO_CLI_PATH, "compile", "--fqbn", FQBN, "."], check=True
@@ -113,6 +122,7 @@ class CameraSerialManager:
     # SKETCH HOCHLADEN
     def upload_sketch(self):
         """Ruft arduino-cli upload auf."""
+        log_message("Lade hoch...", "info")
         try:
             subprocess.run(
                 [ARDUINO_CLI_PATH, "upload", "-p", SERIAL_PORT, "--fqbn", FQBN, "."],
@@ -122,37 +132,50 @@ class CameraSerialManager:
         except subprocess.CalledProcessError as e:
             log_message(f"Fehler beim Upload: {e}", "error")
 
-    # DATENABFRAGE
-    def poll_arduino(self):
-        """Liest Arduino-Antworten und verarbeitet sie."""
-        if not (self.serial_connection and self.serial_connection.is_open):
-            log_message("Serielle Verbindung nicht offen – kann nicht pollen.", "error")
+    # Polling
+    def start_polling(self):
+        """Startet das Polling in einem separaten Thread."""
+        if hasattr(self, "polling_thread") and self.polling_thread is not None:
+            log_message("[WARNING] Polling-Thread läuft bereits!", "warning")
             return
 
-        while True:
+        log_message("Starte Arduino-Polling-Thread...")
+        self.polling_active = True
+        self.polling_thread = threading.Thread(target=self.poll_arduino, daemon=True)
+        self.polling_thread.start()
+
+    def poll_arduino(self):
+        """Liest Daten von der seriellen Verbindung im Thread."""
+        if not self.serial_connection or not self.serial_connection.is_open:
+            log_message("Serielle Verbindung nicht verfügbar!", "error")
+            return
+
+        while getattr(
+            self, "polling_active", True
+        ):  # `polling_active` prüft, ob der Thread weiterlaufen soll
             try:
-                line = (
-                    self.serial_connection.readline()
-                    .decode("utf-8", errors="ignore")
-                    .strip()
-                )
-                if line:
+                if self.serial_connection.in_waiting > 0:
+                    line = (
+                        self.serial_connection.readline()
+                        .decode("utf-8", errors="ignore")
+                        .strip()
+                    )
                     log_message(f"Arduino: {line}")
-                    if line == "MOVE_COMPLETED":
-                        # `pass_count` und `move_count` übergeben
-                        self.take_photo(PASS_COUNT, MOVE_COUNT)
-                        self.MOVE_COUNT += 1  # Zähler hochzählen
-
-                        # Sende 'NEXT', falls noch Bewegungen ausstehen
-                        self.send_command("NEXT")
-
-                    elif line == "DONE":
+                    if line == "DONE":
                         log_message("Arduino-Prozess abgeschlossen.")
-                        break  # Polling beenden
-
+                        break
             except Exception as e:
-                log_message(f"Fehler beim Lesen der seriellen Verbindung: {e}", "error")
-                break  # Falls Fehler auftritt, Polling abbrechen
+                log_message(f"Fehler im Polling: {e}")
+                break
+            time.sleep(0.1)  # CPU-Last reduzieren
+
+    def stop_polling(self):
+        """Beendet den Polling-Thread sicher."""
+        log_message("Beende Arduino-Polling-Thread...")
+        self.polling_active = False
+        if self.polling_thread and self.polling_thread.is_alive():
+            self.polling_thread.join(timeout=2)
+        self.polling_thread = None
 
     def take_photo(self, PASS_COUNT, MOVE_COUNT):
         """Nimmt ein Foto auf und speichert es mit einem passenden Dateinamen."""
