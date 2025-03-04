@@ -1,3 +1,6 @@
 paparazzo.egg-info
-venv
+env
 logs
+images
+packages/__pycache__
+

@@ -1,72 +1,105 @@
-import datetime
+#!/usr/bin/env python3
+
 import logging
 import os
 import time
 
-BASE_OUTPUT_DIR = "/home/pi/images"
+from packages.config import LOGS_DIR
 
-# Logger-Setup für globalen Zugriff
-logger = None
+# Globale Variable für GUI-Referenz
+gui_instance = None
+logger = None  # Globale Logger-Variable
+
+class TextWidgetHandler(logging.Handler):
+    """
+    Leitet alle Log-Ausgaben ins Text-Widget (falls es existiert).
+    Falls das GUI noch nicht läuft, werden die Meldungen auf der Konsole ausgegeben.
+    """
+
+    def emit(self, record):
+        msg = self.format(record)
+        if gui_instance and hasattr(gui_instance, "log_text"):
+            gui_instance.log_text.insert("end", msg + "\n")
+            gui_instance.log_text.see("end")
+            gui_instance.after(100, gui_instance.log_text.update_idletasks)
+        else:
+            # Fallback: Wenn keine GUI da ist, schicken wir's einfach ins Terminal.
+            print(msg)
 
 
 def setup_logging():
     """
-    Richtet zwei Logger-Handler ein:
-      - Einen für alle Logeinträge (Protokoll)
-      - Einen für Fehler (Error)
-    Die Dateinamen enthalten den aktuellen Zeitstempel.
+    Richtet den Hauptlogger "Paparazzo" ein, der alle Meldungen gleichzeitig
+      - in ein Protokoll-Logfile (ab INFO)
+      - in ein Error-Logfile (ab ERROR)
+      - in die GUI (über den TextWidgetHandler, ab DEBUG)
+    schreibt.
+    Gibt am Ende den konfigurierten Logger zurück.
     """
-    global logger
+    global logger  # Greife auf die globale Logger-Variable zu
+
     if logger is not None:
-        return logger  # Falls der Logger schon existiert
+        return logger  # Falls der Logger schon existiert, einfach zurückgeben
 
-    now_str = time.strftime("run_%Y%m%d_%H%M%S")
-    protocol_filename = os.path.join(BASE_OUTPUT_DIR, f"protocol_{now_str}.log")
-    error_filename = os.path.join(BASE_OUTPUT_DIR, f"error_{now_str}.log")
-
+    # Haupt-Logger erstellen
     logger = logging.getLogger("Paparazzo")
-    logger.setLevel(logging.DEBUG)  # Alle Nachrichten sollen verarbeitet werden
+    logger.setLevel(logging.DEBUG)  # Erfasst alle Meldungen ab DEBUG
 
-    # FileHandler für das Protokoll (alle Loglevels ab DEBUG/INFO)
-    ph = logging.FileHandler(protocol_filename)
-    ph.setLevel(logging.DEBUG)
-    # FileHandler für Fehler (nur ERROR und höher)
+    # Damit wir keine doppelten Handler bekommen
+    for h in list(logger.handlers):
+        logger.removeHandler(h)
+
+    # Log-Dateinamen setzen: Protokoll & Error
+    now_str = time.strftime("run_%Y%m%d_%H%M%S")
+    protocol_filename = os.path.join(LOGS_DIR, f"protocol_{now_str}.log")
+    error_filename = os.path.join(LOGS_DIR, f"error_{now_str}.log")
+
+    # 1) FileHandler für alle Meldungen (INFO und höher)
+    fh = logging.FileHandler(protocol_filename)
+    fh.setLevel(logging.INFO)
+
+    # 2) FileHandler für Fehler (ERROR und höher)
     eh = logging.FileHandler(error_filename)
     eh.setLevel(logging.ERROR)
 
-    # Formatter definieren (Zeitstempel, Level und Nachricht)
-    formatter = logging.Formatter(
-        "[%(asctime)s] %(levelname)s: %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
-    )
-    ph.setFormatter(formatter)
-    eh.setFormatter(formatter)
+    # 3) Handler für das GUI-Text-Widget
+    th = TextWidgetHandler()
+    th.setLevel(logging.DEBUG)  # Zeigt alles ab DEBUG auch in der GUI an
 
-    # Handler zum Logger hinzufügen
-    logger.addHandler(ph)
+    # Einen Formatter definieren, damit wir Datum/Zeit/Level dabei haben
+    fmt = "[%(asctime)s] %(levelname)s: %(message)s"
+    date_fmt = "%Y-%m-%d %H:%M:%S"
+    formatter = logging.Formatter(fmt, datefmt=date_fmt)
+
+    # Formatter den Handlern zuweisen
+    fh.setFormatter(formatter)
+    eh.setFormatter(formatter)
+    th.setFormatter(formatter)
+
+    # Handler beim Logger anhängen
+    logger.addHandler(fh)
     logger.addHandler(eh)
+    logger.addHandler(th)
+
     return logger
+
+
+def set_gui_instance(gui):
+    """Setzt die GUI-Instanz, um Logs im Tkinter-Text-Widget anzuzeigen."""
+    global gui_instance
+    gui_instance = gui
 
 
 def log_message(msg, level="info"):
     """
-    Schreibt Nachrichten ins Log und in die Konsole.
-
-    Args:
-        msg (str): Die Nachricht, die geloggt werden soll.
-        level (str): Das Logging-Level ('info', 'warning', 'error', 'debug').
+    Loggt eine Nachricht auf verschiedenen Ebenen und gibt sie in die GUI aus.
     """
-    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    log_entry = f"[{ts}] {msg}"
-
-    # In die Konsole ausgeben
-    print(log_entry)
-
-    # Falls der Logger nicht existiert, erstelle ihn
     global logger
-    if logger is None:
-        logger = setup_logging()
 
-    # In das Log-File schreiben
+    if logger is None:
+        logger = setup_logging()  # Stelle sicher, dass der Logger initialisiert ist
+
+    # Logging-Level festlegen
     log_levels = {
         "info": logger.info,
         "warning": logger.warning,
@@ -74,4 +107,6 @@ def log_message(msg, level="info"):
         "debug": logger.debug,
     }
     log_func = log_levels.get(level, logger.info)
+
+    # Log-Nachricht schreiben
     log_func(msg)

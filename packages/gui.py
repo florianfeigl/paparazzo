@@ -1,52 +1,58 @@
 #!/usr/bin/env python3
 
 import os
-import subprocess
 import time
 import tkinter as tk
 from tkinter import ttk
 
-from .camera import init_camera, manual_take_photo
-from .config import (ARDUINO_CLI_PATH, BASE_OUTPUT_DIR, CONFIG_FILE, FQBN,
-                     SERIAL_PORT, TEMPLATE_FILE)
-from .logger import log_message, setup_logging
-from .serial_comm import on_manual_next, poll_arduino, send_message
+from packages.camera_serial_manager import CameraSerialManager
+from packages.config import IMAGES_DIR, PASS_COUNT, RUN_DIR
+from packages.logger import set_gui_instance, gui_instance, log_message, setup_logging
 
+# Logger zuweisen
 logger = setup_logging()
 
 
 class Paparazzo(tk.Tk):
     """
     Hauptklasse für die Tkinter-GUI.
-    Enthält die gesamte Logik für:
-    - Arduino-Kommunikation (Senden/Empfangen)
-    - Kamera (Picamera2) für Einzelfotos
-    - Workflow (mehrere Durchläufe, Ordnerstruktur)
-    - Log-Ausgabe in Text-Widget
-    - Vollbildmodus
     """
 
     picam = None
 
     def __init__(self):
         super().__init__()
+        global gui_instance
+
+        # GUI Titel
         self.title("Paparazzo GUI")
-        # Logger initialisieren
-        self.logger = setup_logging()
-        self.logger.info("Starte Paparazzo GUI...")
+
+        # Setze das Theme für eine bessere Darstellung
+        style = ttk.Style()
+        style.theme_use("clam")  # Alternativ: 'alt', 'default', 'classic'
+        style.configure("CenterEntry.TEntry", padding=(0, 10, 0, 10))
+
+        # Fenster maximiert starten
         w = self.winfo_screenwidth()
         h = self.winfo_screenheight()
-        # Fenster auf volle Bildschirmgröße, aber nicht im "echten" Vollbild
         self.geometry(f"{w}x{h}+0+0")
+
+        # Manager für Kamera & serielle Schnittstelle
+        self.manager = CameraSerialManager()
 
         # 1) Zuerst GUI-Elemente erstellen
         self.create_widgets()
 
-        # 2) Dann Kamera initialisieren (log_message() braucht schon log_text!)
-        init_camera()
+        set_gui_instance(self)
+        # Logger initialisieren
+        self.logger = setup_logging()
+        log_message("Starte Paparazzo GUI...", "info")
+
+        # 2) Dann Kamera initialisieren (logger() braucht schon log_text!)
+        self.manager.init_camera()
 
         # 3) Zum Schluss Polling für Arduino starten
-        poll_arduino(self)
+        self.after(100, self.manager.poll_arduino)  
 
     def create_widgets(self):
         """Erstellt alle Tkinter-Widgets und legt das Layout fest."""
@@ -55,97 +61,188 @@ class Paparazzo(tk.Tk):
         self.columnconfigure(1, weight=1)
 
         # Wiederholungen: [<] [Textfeld] [>]
-        REPEATS_frame = ttk.Frame(self)
-        REPEATS_frame.grid(row=0, column=0, columnspan=2, padx=5, pady=5)
-        tk.Label(REPEATS_frame, text="Wiederholungen:", anchor="e").grid(
-            row=0, column=0, padx=5
+        repeats_frame = ttk.Frame(self)
+        repeats_frame.grid(row=0, column=0, padx=10)
+        tk.Label(repeats_frame, text="Wiederholungen:", anchor="e").grid(
+            row=0, column=0, columnspan=3, padx=10, pady=5
         )
-        self.REPEATS_var = tk.IntVar(value=2)
-        minus_REPEATS = ttk.Button(
-            REPEATS_frame, text="<", command=self.decrement_REPEATS, width=3
+        self.repeats_var = tk.IntVar(value=2)
+        minus_repeats = ttk.Button(
+            repeats_frame, text="<", command=self.decrement_repeats, width=5
         )
-        minus_REPEATS.grid(row=0, column=1, padx=5, ipadx=10, ipady=10)
-        REPEATS_entry = ttk.Entry(
-            REPEATS_frame,
-            textvariable=self.REPEATS_var,
-            width=5,
-            font=("Helvetica", 16),
+        minus_repeats.grid(row=1, column=0, padx=10, ipadx=10, ipady=14)
+        repeats_entry = ttk.Entry(
+            repeats_frame,
+            textvariable=self.repeats_var,
+            width=3,
+            font=("Helvetica", 26),
             justify="center",
+            style="CenterEntry.TEntry",
         )
-        REPEATS_entry.grid(row=0, column=2, padx=5)
-        plus_REPEATS = ttk.Button(
-            REPEATS_frame, text=">", command=self.increment_REPEATS, width=3
+        repeats_entry.grid(row=1, column=1)
+        plus_repeats = ttk.Button(
+            repeats_frame, text=">", command=self.increment_repeats, width=5
         )
-        plus_REPEATS.grid(row=0, column=3, padx=5, ipadx=10, ipady=10)
+        plus_repeats.grid(row=1, column=2, padx=10, ipadx=10, ipady=14)
 
         # Pause (in Minuten): [<] [Textfeld] [>]
-        PAUSE_frame = ttk.Frame(self)
-        PAUSE_frame.grid(row=1, column=0, columnspan=2, padx=5, pady=5)
-        tk.Label(PAUSE_frame, text="Pause (Minuten):", anchor="e").grid(
-            row=0, column=0, padx=5
+        pause_frame = ttk.Frame(self)
+        pause_frame.grid(row=1, column=0, padx=10)
+        tk.Label(pause_frame, text="Pause (Minuten):", anchor="e").grid(
+            row=0, column=0, columnspan=3, padx=10, pady=5
         )
-        self.PAUSE_var = tk.IntVar(value=1)
-        minus_PAUSE = ttk.Button(
-            PAUSE_frame, text="<", command=self.decrement_PAUSE, width=3
+        self.pause_var = tk.IntVar(value=1)
+        minus_pause = ttk.Button(
+            pause_frame, text="<", command=self.decrement_pause, width=5
         )
-        minus_PAUSE.grid(row=0, column=1, padx=5, ipadx=10, ipady=10)
-        PAUSE_entry = ttk.Entry(
-            PAUSE_frame,
-            textvariable=self.PAUSE_var,
-            width=5,
-            font=("Helvetica", 16),
+        minus_pause.grid(row=1, column=0, padx=10, ipadx=10, ipady=14)
+        pause_entry = ttk.Entry(
+            pause_frame,
+            textvariable=self.pause_var,
+            width=3,
+            font=("Helvetica", 26),
             justify="center",
+            style="CenterEntry.TEntry",
         )
-        PAUSE_entry.grid(row=0, column=2, padx=5)
-        plus_PAUSE = ttk.Button(
-            PAUSE_frame, text=">", command=self.increment_PAUSE, width=3
+        pause_entry.grid(row=1, column=1)
+        plus_pause = ttk.Button(
+            pause_frame, text=">", command=self.increment_pause, width=5
         )
-        plus_PAUSE.grid(row=0, column=3, padx=5, ipadx=10, ipady=10)
+        plus_pause.grid(row=1, column=2, padx=10, ipadx=10, ipady=14)
 
-        # Buttons: Generieren & Hochladen | Manueller NEXT
-        button_frame1 = ttk.Frame(self)
-        button_frame1.grid(row=2, column=0, columnspan=2, pady=5)
+        # Generieren & Hochladen
         gen_upload_btn = ttk.Button(
-            button_frame1,
+            self,
             text="Generieren & Hochladen",
             command=self.on_generate_and_upload,
-            width=22,
+            width=25,
         )
-        gen_upload_btn.grid(row=0, column=0, padx=5)
-        manual_next_btn = ttk.Button(
-            button_frame1, text="Manueller NEXT", command=on_manual_next, width=22
-        )
-        manual_next_btn.grid(row=0, column=1, padx=5)
+        gen_upload_btn.grid(row=2, column=0, pady=10, ipadx=14, ipady=14)
 
-        # Buttons: Programm START | Manuelles Foto
-        button_frame2 = ttk.Frame(self)
-        button_frame2.grid(row=3, column=0, columnspan=2, pady=5)
+        # PROGRAMMFUNKTIONEN
+        # Programm START
         start_btn = ttk.Button(
-            button_frame2,
+            self,
             text="Programm START",
             command=self.on_start_program,
-            width=22,
+            width=20,
         )
-        start_btn.grid(row=0, column=0, padx=5)
-        photo_btn = ttk.Button(
-            button_frame2,
-            text="Manuelles Foto",
-            command=manual_take_photo,
-            width=22,
-        )
-        photo_btn.grid(row=0, column=1, padx=5)
+        start_btn.grid(row=0, column=1, padx=10, ipadx=14, ipady=14)
 
-        # Button: Abbruch (zentriert)
-        abort_btn = ttk.Button(self, text="Abbruch", command=self.on_abort, width=22)
-        abort_btn.grid(row=4, column=0, columnspan=2, pady=5)
+        # Programm ABBRUCH
+        abort_btn = ttk.Button(
+            self, text="Programm ABBRUCH", command=self.on_abort, width=20
+        )
+        abort_btn.grid(row=1, column=1, padx=10, ipadx=14, ipady=14)
+
+        # Programm SCHLIESSEN
+        close_button = ttk.Button(
+            self, text="Programm SCHLIESSEN", command=self.on_close, width=20
+        )
+        close_button.grid(row=2, column=1, padx=10, ipadx=14, ipady=14)
 
         # Log-Text + Scrollbar
-        self.log_text = tk.Text(self, wrap="word", height=15, width=70)
+        self.log_text = tk.Text(self, wrap="word", height=50, width=70)
         self.log_text.grid(row=5, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
+
         scrollbar = ttk.Scrollbar(self, command=self.log_text.yview)
         scrollbar.grid(row=5, column=2, sticky="ns")
-        self.log_text["yscrollcommand"] = scrollbar.set
 
+        # WICHTIG: Das Text-Widget muss dem Scrollbar mitteilen, wann es gescrollt wird.
+        self.log_text.configure(yscrollcommand=scrollbar.set)
+
+        # MANUELLE AKTIONEN
+        ## Manual NEXT
+        # manual_next_btn = ttk.Button(
+        #    button_frame1,
+        #    text="Manueller NEXT",
+        #    command=on_manual_next,
+        #    width=20,
+        # )
+        # manual_next_btn.grid(row=0, column=2, padx=10, ipadx=7, ipady=7)
+        ## Manual PHOTO
+        # photo_btn = ttk.Button(
+        #    button_frame2,
+        #    text="Manuelles Foto",
+        #    command=manual_take_photo,
+        #    width=20,
+        # )
+        # photo_btn.grid(row=0, column=1, padx=10, ipadx=7, ipady=7)
+
+    # GENERIEREN & HOCHLADEN
+    def on_generate_and_upload(self):
+        """Button-Klick: Erstellt config.h, kompiliert und lädt den Sketch hoch."""
+        REPEATS = self.repeats_var.get()
+        PAUSE_MS = self.pause_var.get()
+
+        if REPEATS < 1:
+            log_message(
+                "Unzulässige Eingabe. Bitte eine Zahl größer als 0 für Wiederholungen eingeben.",
+                "error",
+            )
+            return
+        if PAUSE_MS < 1:
+            log_message(
+                "Unzulässige Eingabe. Bitte eine Zahl größer als 0 für Pause (Minuten) eingeben.",
+                "error",
+            )
+            return
+
+        # Werte
+        REPEATS = int(REPEATS)
+        PAUSE_MS = int(PAUSE_MS)
+
+        # 1) config.h generieren
+        self.manager.generate_config_file(REPEATS, PAUSE_MS)
+        log_message("Generiere config.h...", "info")
+
+        # 2) Kompilieren
+        self.manager.compile_sketch()
+        log_message("Kompiliere Sketch...", "info")
+
+        # 3) Hochladen
+        self.manager.upload_sketch()
+        log_message("Lade hoch...", "info")
+
+        log_message("Fertig!", "info")
+
+    def start_pass_folder(self):
+        """Legt den Unterordner (pass_01, pass_02, ...) für den aktuellen Pass an."""
+        # Falls self.RUN_DIR noch nicht gesetzt ist, verwende IMAGES_DIR als Fallback
+        BASE_DIR = RUN_DIR if RUN_DIR is not None else IMAGES_DIR
+        PASS_FOLDER_NAME = f"pass_{PASS_COUNT:02d}"
+        self.CURRENT_PASS_DIR = os.path.join(BASE_DIR, PASS_FOLDER_NAME)
+        os.makedirs(self.CURRENT_PASS_DIR, exist_ok=True)
+        log_message(f"Neuer Pass-Ordner angelegt: {self.CURRENT_PASS_DIR}", "info")
+        self.MOVE_COUNT = 0
+
+    # Input button functions
+    def increment_repeats(self):
+        self.repeats_var.set(self.repeats_var.get() + 1)
+
+    def decrement_repeats(self):
+        if self.repeats_var.get() > 1:
+            self.repeats_var.set(self.repeats_var.get() - 1)
+
+    def increment_pause(self):
+        self.pause_var.set(self.pause_var.get() + 1)
+
+    def decrement_pause(self):
+        if self.pause_var.get() > 1:
+            self.pause_var.set(self.pause_var.get() - 1)
+
+    # ABBRECHEN
+    def on_abort(self):
+        """Button-Klick: Sende 'ABORT' an Arduino, der daraufhin abbrechen soll."""
+        log_message("Sende 'ABORT' an Arduino...", "info")
+        self.manager.send_command("ABORT")
+
+    # SCHLIESSEN
+    def on_close(self):
+        log_message("Programm beendet.", "info")
+        Paparazzo.destroy(self)
+
+    # PROGRAMM-START
     def on_start_program(self):
         """
         Wird aufgerufen, wenn "Programm START" geklickt wird.
@@ -155,132 +252,24 @@ class Paparazzo(tk.Tk):
         4) Schickt 'START' an Arduino.
         """
         now_str = time.strftime("run_%Y%m%d_%H%M%S")
-        self.RUN_DIR = os.path.join(BASE_OUTPUT_DIR, now_str)
-        os.makedirs(self.RUN_DIR, exist_ok=True)
-        log_message(f"Neuer Lauf-Ordner: {self.RUN_DIR}")
+        RUN_DIR = os.path.join(IMAGES_DIR, now_str)
+        os.makedirs(RUN_DIR, exist_ok=True)
+        log_message(f"Neuer Lauf-Ordner: {RUN_DIR}", "info")
 
-        REPEATS = self.REPEATS_var.get()
+        REPEATS = self.repeats_var.get()
         if REPEATS < 1:
             log_message(
-                logger, "Bitte eine Zahl größer als 0 für Wiederholungen eingeben."
+                "Unzulässige Eingabe. Bitte eine Zahl größer als 0 für Wiederholungen eingeben.",
+                "error",
             )
             return
-        self.REPEATS = REPEATS
 
-        # Pass 1 beginnen
-        self.PASS_COUNT = 1
-        self.MOVE_COUNT = 0
+        REPEATS = REPEATS
+
         self.start_pass_folder()
 
-        log_message("Sende 'START' an Arduino...")
-        send_message("START")
-
-    def start_pass_folder(self):
-        """Legt den Unterordner (pass_01, pass_02, ...) für den aktuellen Pass an."""
-        # Falls self.RUN_DIR noch nicht gesetzt ist, verwende BASE_OUTPUT_DIR als Fallback
-        BASE_DIR = self.RUN_DIR if self.RUN_DIR is not None else BASE_OUTPUT_DIR
-        PASS_FOLDER_NAME = f"pass_{self.PASS_COUNT:02d}"
-        self.CURRENT_PASS_DIR = os.path.join(BASE_DIR, PASS_FOLDER_NAME)
-        os.makedirs(self.CURRENT_PASS_DIR, exist_ok=True)
-        log_message(logger, f"Neuer Pass-Ordner angelegt: {self.CURRENT_PASS_DIR}")
-        self.MOVE_COUNT = 0
-
-    # Input button functions
-    def increment_REPEATS(self):
-        self.REPEATS_var.set(self.REPEATS_var.get() + 1)
-
-    def decrement_REPEATS(self):
-        if self.REPEATS_var.get() > 1:
-            self.REPEATS_var.set(self.REPEATS_var.get() - 1)
-
-    def increment_PAUSE(self):
-        self.PAUSE_var.set(self.PAUSE_var.get() + 1)
-
-    def decrement_PAUSE(self):
-        if self.PAUSE_var.get() > 1:
-            self.PAUSE_var.set(self.PAUSE_var.get() - 1)
-
-    # KONFIGURATION GENERIEREN
-    def generate_config_file(self, REPEATS, PAUSE):
-        """
-        Liest config_template.h, ersetzt Platzhalter und schreibt config.h
-        """
-        try:
-            with open(TEMPLATE_FILE, "r") as template:
-                content = template.read()
-
-            # Platzhalter ersetzen
-            content = content.replace("{{REPEATS_PLACEHOLDER}}", str(REPEATS))
-            content = content.replace("{{PAUSE_PLACEHOLDER}}", str(PAUSE))
-
-            # Neue config.h schreiben
-            with open(CONFIG_FILE, "w") as config:
-                config.write(content)
-
-            print("config.h wurde erfolgreich generiert.")
-
-        except FileNotFoundError:
-            print(f"FEHLER: {TEMPLATE_FILE} wurde nicht gefunden.")
-
-    # GENERIEREN & HOCHLADEN
-    def on_generate_and_upload(self):
-        """Button-Klick: Erstellt config.h, kompiliert und lädt den Sketch hoch."""
-        REPEATS = self.REPEATS_var.get()
-        PAUSE_MS = self.PAUSE_var.get()
-
-        if REPEATS < 1:
-            log_message("Bitte eine Zahl größer als 0 für Wiederholungen eingeben.")
-            return
-        if PAUSE_MS < 1:
-            log_message("Bitte eine Zahl größer als 0 für Pause (Minuten) eingeben.")
-            return
-
-        # Werte
-        REPEATS = int(REPEATS)
-        PAUSE_MS = int(PAUSE_MS)
-
-        # 1) config.h generieren
-        self.generate_config_file(REPEATS, PAUSE_MS)
-        log_message("Generiere config.h...")
-
-        # 2) Kompilieren
-        self.compile_sketch()
-        log_message("Kompiliere Sketch...")
-
-        # 3) Hochladen
-        self.upload_sketch()
-        log_message("Lade hoch...")
-
-        log_message("Fertig!")
-
-    # SKETCH KOMPILIEREN
-    def compile_sketch(self):
-        """Ruft arduino-cli compile auf."""
-        try:
-            subprocess.run(
-                [ARDUINO_CLI_PATH, "compile", "--fqbn", FQBN, "."], check=True
-            )
-            log_message("Kompilierung erfolgreich.")
-        except subprocess.CalledProcessError as e:
-            log_message(f"Fehler bei der Kompilierung: {e}")
-
-    # SKETCH HOCHLADEN
-    def upload_sketch(self):
-        """Ruft arduino-cli upload auf."""
-        try:
-            subprocess.run(
-                [ARDUINO_CLI_PATH, "upload", "-p", SERIAL_PORT, "--fqbn", FQBN, "."],
-                check=True,
-            )
-            log_message("Upload erfolgreich.")
-        except subprocess.CalledProcessError as e:
-            log_message(f"Fehler beim Upload: {e}")
-
-    # ABBRECHEN
-    def on_abort(self):
-        """Button-Klick: Sende 'ABORT' an Arduino, der daraufhin abbrechen soll."""
-        log_message("Sende 'ABORT' an Arduino...")
-        send_message("abort")
+        log_message("Sende 'START' an Arduino...", "info")
+        self.manager.send_command("START")
 
 
 def main():

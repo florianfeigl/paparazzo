@@ -4,7 +4,6 @@
 # Author            : Florian Feigl (florian.feigl@stud.plus.ac.at)
 # Supervisor        : Prof. Dr. Obermeyer (gerhard.obermeyer@plus.ac.at)
 # Modified          : 03.03.2025
-# Version           : 0.6.2
 #
 # Abstract          :
 # This program serves the purpose of moving two stepper motors to scan a two
@@ -14,15 +13,10 @@
 #   - Raspberry Pi OS 12 (bookworm)
 #
 # Software          :
-#   - libcamera
-#   - cmake
-#   - libglib2.0-dev
-#   - libgstreamer1.0-dev
-#   - libgstreamer-plugins-base1.0-dev
-#   - pybind11-dev
-#   - python3-jinja2
-#   - python3-yaml
-#   - python3-ply
+#   - python3-full
+#   - libcap-dev
+#   - libcamera-dev
+#   - libcamera-apps
 #
 # Libraries         :
 #   - <AccelStepper.h>
@@ -38,15 +32,17 @@
 # used for learning or demonstration purposes.
 # ----------------------------------------------------------------------------
 
-from setuptools import setup, find_packages
+from setuptools import find_packages, setup
 
 setup(
     name="paparazzo",
-    version="0.6.0",
+    version="0.6.3",
     description="Paparazzo Project: Arduino- und Kamera-Integration",
     author="Florian Feigl",
     author_email="florian.feigl@stud.plus.ac.at",
-    packages=find_packages(include=["packages", "packages.*"]),  # Findet alle Unterpakete
+    packages=find_packages(
+        include=["packages", "packages.*"]
+    ),  # Findet alle Unterpakete
     install_requires=[
         "pyserial",
         "setuptools",

@@ -1,31 +1,5 @@
-// ----------------------------------------------------------------------------
-// File             : paparazzo.ino
-// Author           : Florian Feigl (florian.feigl@stud.plus.ac.at)
-// Supervisor       : Prof. Dr. Obermeyer (gerhard.obermeyer@plus.ac.at)
-// Modified         : 27.02.2025
-// Version          : 0.7
-//
-// Abstract         :
-// This program serves the purpose of moving two stepper motors to scan a two
-// dimensional area with cameras.
-//
-// Libraries        :
-// - <AccelStepper.h>
-//
-// Hardware         :
-// - Arduino Uno Rev3
-// - Nema 17 Stepper Motors
-// - TB6600 Stepper Motor Drivers
-// - Raspberry Pi 4 Model B
-//
-// License/Disclaimer:
-// This project is done in context of an academic course and can only be
-// used for learning or demonstration purposes.
-// ----------------------------------------------------------------------------
-
 #include "config.h"
 
-// FUNKTIONEN
 // Hilfsfunktion: Log-Meldung über Hardware-Serial ausgeben
 void logMessage(String message, bool newline = true) {
   Serial.print("[");
@@ -54,10 +28,10 @@ void setup() {
 
   // Schrittweiten vorbereiten
   for (int i = 0; i < 6; i++) {
-    positions_column[i] = i * distance_wells_columns;
+    positions_column[i] = i * distance_columns;
   }
   for (int i = 0; i < 4; i++) {
-    positions_row[i] = i * -distance_wells_row;
+    positions_row[i] = i * -distance_rows;
   }
 
   // Enable-Pins per INPUT_PULLUP deaktivieren (High = disabled)
@@ -84,23 +58,15 @@ void setup() {
       }
     }
   }
-
-  // Geschwindigkeiten und Beschleunigung einstellen
-  stepper_column.setMaxSpeed(max_speed);
-  stepper_column.setAcceleration(accel);
-  stepper_row.setMaxSpeed(max_speed);
-  stepper_row.setAcceleration(accel);
-
-  // Startposition als 0 definieren
-  stepper_column.setCurrentPosition(0);
-  stepper_row.setCurrentPosition(0);
 }
 
 void loop() {
-  // Hauptschleife, wie oft das Programm gefahren wird
+  // Hauptschleife, Wiederholungen
   for (int i = 0; i < repeats; i++) {
+
     // Geschachtelte Schleifen: y = Spalten (0..3), x = Reihen (0..5)
     for (int y = 0; y < 4; y++) {  
+
       for (int x = 0; x < 6; x++) {
         // Position in x-Richtung anfahren
         logMessage("Moving to well " + String(x) +
@@ -119,7 +85,7 @@ void loop() {
         bool waitingForNext = true;
         unsigned long startTime = millis();
         while (waitingForNext) {
-          if (millis() - startTime > 4000) {
+          if (millis() - startTime > 3500) {
             logMessage("⏳ Timeout: No response from Raspberry Pi. Skipping...");
             break;
           }
@@ -162,10 +128,10 @@ void loop() {
   while (true) { }
 
   ABORT_LABEL:
-  // Hier landet das Programm bei 'goto ABORT_LABEL;'
-  // => direkt abbrechen & Home-Position
-  stepper_column.runToNewPosition(0);
-  stepper_row.runToNewPosition(0);
-  // Endlosschleife, "Aus"
-  while (true) { }
+    // Hier landet das Programm bei 'goto ABORT_LABEL;'
+    // => direkt abbrechen & Home-Position
+    stepper_column.runToNewPosition(0);
+    stepper_row.runToNewPosition(0);
+    // Endlosschleife, "Aus"
+    while (true) { }
 }
