@@ -32,6 +32,8 @@ class Paparazzo(tk.Tk):
         style = ttk.Style()
         style.theme_use("clam")  # Alternativ: 'alt', 'default', 'classic'
         style.configure("CenterEntry.TEntry", padding=(0, 10, 0, 10))
+        style.configure("Repeats.TFrame", background="lightgreen")
+        style.configure("Pause.TFrame", background="yellow")
 
         # Fenster maximiert starten
         w = self.winfo_screenwidth()
@@ -64,44 +66,74 @@ class Paparazzo(tk.Tk):
         # Spaltenanpassung
         self.columnconfigure(0, weight=1)
         self.columnconfigure(1, weight=1)
+        self.columnconfigure(2, weight=1)
 
-        # Reihen in Spalte 1
+        # LAYOUT
         # Wiederholungen: [<] [Textfeld] [>]
-        repeats_frame = ttk.Frame(self)
-        repeats_frame.grid(row=0, column=0, padx=10)
+        repeats_frame = ttk.Frame(self, style="Repeats.TFrame")
+        repeats_frame.grid(row=0, column=0)
+
+        # Standardwert im Eingabefeld
         self.repeats_var = tk.IntVar(value=2)
+
+        # Wiederholungen Minusbutton
         minus_repeats = ttk.Button(
             repeats_frame, text="<", command=self.decrement_repeats, width=7
         )
-        minus_repeats.grid(row=0, column=0, padx=10, ipadx=14, ipady=14)
+        minus_repeats.grid(row=0, column=0, padx=10, pady=10, ipadx=14, ipady=14)
+
+        # Wiederholungen Eingabefeld
         repeats_entry = ttk.Entry(
             repeats_frame,
             textvariable=self.repeats_var,
             width=3,
-            font=("Helvetica", 26),
+            font=("Helvetica", 25),
             justify="center",
             style="CenterEntry.TEntry",
         )
-        repeats_entry.grid(row=0, column=1)
+
+        # Eingabefeld Wiederholungen
+        repeats_entry.grid(row=0, column=1, sticky="ew")
+
+        # Plusknopf Wiederholungen
         plus_repeats = ttk.Button(
             repeats_frame, text=">", command=self.increment_repeats, width=7
         )
-        plus_repeats.grid(row=0, column=2, padx=10, ipadx=14, ipady=14)
-        tk.Label(repeats_frame, text="Wiederholungen (Standard: 2)", anchor="e").grid(
-            row=1, column=0, columnspan=3, padx=20
+        plus_repeats.grid(row=0, column=2, padx=10, pady=10, ipadx=14, ipady=14)
+
+        # LABEL FRAME
+        label_frame = ttk.Frame(self)
+        label_frame.columnconfigure(0, weight=1)
+        label_frame.columnconfigure(1, weight=1)
+        label_frame.columnconfigure(2, weight=1)
+        label_frame.grid(row=1, column=0, sticky="ew")
+
+        # Wiederholungen Label
+        tk.Label(label_frame, bg="lightgreen", text="Wiederholungen", anchor="w").grid(
+            row=0, column=0, padx=(10,0), ipadx=14, ipady=14
         )
 
-        # Pause (in Minuten): [<] [Textfeld] [>]
-        pause_frame = ttk.Frame(self)
-        pause_frame.grid(row=1, column=0, padx=10)
-        tk.Label(pause_frame, text="Pause Minuten (Standard: 1)", anchor="e").grid(
-            row=0, column=0, columnspan=3, padx=10
+        # Platzhalterzelle in Zeile 0, Spalte 1 (keine Widgets hier)
+        tk.Label(label_frame, text="").grid(row=0, column=1, sticky="ew")
+
+        # Pausenlabel
+        tk.Label(label_frame, bg="yellow", text="Pause (Minuten)", anchor="e").grid(
+            row=0, column=2, padx=(0,10), ipadx=14, ipady=14
         )
+        # Pause (in Minuten): [<] [Textfeld] [>]
+        pause_frame = ttk.Frame(self, style="Pause.TFrame")
+        pause_frame.grid(row=2, column=0)
+
+        # Wert im Pause Eingabefeld
         self.pause_var = tk.IntVar(value=1)
+
+        # Minusbutton Pause
         minus_pause = ttk.Button(
             pause_frame, text="<", command=self.decrement_pause, width=7
         )
-        minus_pause.grid(row=1, column=0, padx=20, ipadx=14, ipady=14)
+        minus_pause.grid(row=0, column=0, padx=10, pady=10, ipadx=14, ipady=14)
+
+        # Eingabefeld Pause
         pause_entry = ttk.Entry(
             pause_frame,
             textvariable=self.pause_var,
@@ -110,47 +142,53 @@ class Paparazzo(tk.Tk):
             justify="center",
             style="CenterEntry.TEntry",
         )
-        pause_entry.grid(row=1, column=1)
+        pause_entry.grid(row=0, column=1)
+
+        # Plusknopf Pause
         plus_pause = ttk.Button(
             pause_frame, text=">", command=self.increment_pause, width=7
         )
-        plus_pause.grid(row=1, column=2, padx=20, ipadx=14, ipady=14)
+        plus_pause.grid(row=0, column=2, padx=10, ipadx=14, ipady=14)
 
-        # Reihen in Spalte 2
+        # Execution Elements
+        execution_frame = ttk.Frame(self)
+        execution_frame.grid(row=0, column=1, padx=10, pady=10)
+
         # Generieren & Hochladen
         gen_upload_btn = ttk.Button(
             self,
-            text="GENERIEREN & LADEN",
+            text="Generieren & Laden",
             command=self.on_generate_and_upload,
             width=18,
         )
-        gen_upload_btn.grid(row=0, column=1, ipadx=14, ipady=14)
+        gen_upload_btn.grid(row=0, column=1, pady=10, ipadx=14, ipady=14)
 
         # Programm START
         start_btn = ttk.Button(
             self,
-            text="STARTEN",
+            text="Starten",
             command=self.on_start_program,
             width=18,
         )
-        start_btn.grid(row=1, column=1, padx=10, ipadx=14, ipady=14)
+        start_btn.grid(row=1, column=1, padx=10, pady=10, ipadx=14, ipady=14)
 
-        # Reihen in Spalte 3
+        # RIGHT ELEMENTS
+        administration_frame = ttk.Frame(self)
+        administration_frame.grid(row=0, column=2, padx=10, pady=10)
+
         # Programm ABBRUCH
-        abort_btn = ttk.Button(
-            self, text="ZURÜCKSETZEN", command=self.on_abort, width=18
-        )
+        abort_btn = ttk.Button(self, text="Abbrechen", command=self.on_abort, width=18)
         abort_btn.grid(row=0, column=2, padx=10, ipadx=14, ipady=14)
 
         # Programm SCHLIESSEN
         close_button = ttk.Button(
-            self, text="SCHLIESSEN", command=self.on_close, width=20
+            self, text="Schließen", command=self.on_close, width=18
         )
         close_button.grid(row=1, column=2, padx=10, ipadx=14, ipady=14)
 
         # Log-Text-Widget initialisieren
-        self.log_text = tk.Text(self, wrap="word", height=15, width=25)
-        self.log_text.grid(row=5, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
+        self.log_text = tk.Text(self, wrap="word", height=13, width=16)
+        self.log_text.grid(row=5, column=0, columnspan=3, padx=(10,0), sticky="ew")
 
         # Scrollbar für das Log-Text-Widget
         scrollbar = ttk.Scrollbar(self, command=self.log_text.yview)

@@ -165,14 +165,14 @@ class CameraSerialManager:
                     )
 
                     # Debugging-Log
-                    log_message(f"DEBUG: Empfangene Zeile: {raw_line}")
+                    #log_message(f"DEBUG: Empfangene Zeile: {raw_line}")
 
                     # Falls die Nachricht im falschen Format ist, logge sie
                     if not raw_line.startswith("<") or not raw_line.endswith(">"):
-                        log_message(
-                            f"Ungültiges Format empfangen: {raw_line}",
-                            "warning",
-                        )
+                        #log_message(
+                        #    f"Kein gültiges Muster: {raw_line}",
+                        #    "info",
+                        #)
                         continue
 
                     # Inhalt extrahieren

@@ -43,7 +43,7 @@ last_modified = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(os.path.getmti
 
 setup(
     name="paparazzo",
-    version="0.7.0",
+    version="0.7.1",
     description="Paparazzo Project: Arduino- und Kamera-Integration",
     author="Florian Feigl",
     author_email="florian.feigl@stud.plus.ac.at",
