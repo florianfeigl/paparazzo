@@ -18,6 +18,9 @@ class TextWidgetHandler(logging.Handler):
     """
 
     def emit(self, record):
+        if record.levelno < logging.INFO:  
+            return
+
         msg = self.format(record)
         if (
             gui_instance

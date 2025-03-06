@@ -109,16 +109,16 @@ class Paparazzo(tk.Tk):
         label_frame.grid(row=1, column=0, sticky="ew")
 
         # Wiederholungen Label
-        tk.Label(label_frame, bg="lightgreen", text="Wiederholungen", anchor="w").grid(
-            row=0, column=0, padx=(10,0), ipadx=14, ipady=14
+        tk.Label(label_frame, text="Wiederholungen", bg="lightgreen", font=("Helvetica", 11, "bold")).grid(
+            row=0, column=0, ipadx=10, ipady=10
         )
 
         # Platzhalterzelle in Zeile 0, Spalte 1 (keine Widgets hier)
         tk.Label(label_frame, text="").grid(row=0, column=1, sticky="ew")
 
         # Pausenlabel
-        tk.Label(label_frame, bg="yellow", text="Pause (Minuten)", anchor="e").grid(
-            row=0, column=2, padx=(0,10), ipadx=14, ipady=14
+        tk.Label(label_frame, text="Pause (Minuten)", bg="yellow", font=("Helvetica", 11, "bold")).grid(
+            row=0, column=2, ipadx=10, ipady=10
         )
         # Pause (in Minuten): [<] [Textfeld] [>]
         pause_frame = ttk.Frame(self, style="Pause.TFrame")
@@ -138,7 +138,7 @@ class Paparazzo(tk.Tk):
             pause_frame,
             textvariable=self.pause_var,
             width=3,
-            font=("Helvetica", 25),
+            font=("Helvetica", 24),
             justify="center",
             style="CenterEntry.TEntry",
         )
@@ -152,54 +152,50 @@ class Paparazzo(tk.Tk):
 
         # Execution Elements
         execution_frame = ttk.Frame(self)
-        execution_frame.grid(row=0, column=1, padx=10, pady=10)
+        execution_frame.grid(row=0, rowspan=3, column=1)
 
         # Generieren & Hochladen
         gen_upload_btn = ttk.Button(
-            self,
+            execution_frame,
             text="Generieren & Laden",
             command=self.on_generate_and_upload,
-            width=18,
+            width=16,
         )
-        gen_upload_btn.grid(row=0, column=1, pady=10, ipadx=14, ipady=14)
+        gen_upload_btn.grid(row=0, column=1, ipadx=12, ipady=12)
 
         # Programm START
         start_btn = ttk.Button(
-            self,
+            execution_frame,
             text="Starten",
             command=self.on_start_program,
-            width=18,
+            width=16,
         )
-        start_btn.grid(row=1, column=1, padx=10, pady=10, ipadx=14, ipady=14)
+        start_btn.grid(row=1, column=1, padx=10, pady=10, ipadx=12, ipady=12)
 
-        # RIGHT ELEMENTS
+        # Abbrechen
+        abort_btn = ttk.Button(
+            execution_frame, text="Abbrechen", command=self.on_abort, width=16
+        )
+        abort_btn.grid(row=2, column=1, padx=10, ipadx=14, ipady=14)
+
+        # System Elements
         administration_frame = ttk.Frame(self)
-        administration_frame.grid(row=0, column=2, padx=10, pady=10)
+        administration_frame.grid(row=0, rowspan=3, column=2)
 
-        # Programm ABBRUCH
-        abort_btn = ttk.Button(self, text="Abbrechen", command=self.on_abort, width=18)
-        abort_btn.grid(row=0, column=2, padx=10, ipadx=14, ipady=14)
-
-        # Programm SCHLIESSEN
+        # Schließen
         close_button = ttk.Button(
-            self, text="Schließen", command=self.on_close, width=18
+            administration_frame, text="Schließen", command=self.on_close, width=16
         )
         close_button.grid(row=1, column=2, padx=10, ipadx=14, ipady=14)
 
         # Log-Text-Widget initialisieren
-        self.log_text = tk.Text(self, wrap="word", height=13, width=16)
-        self.log_text.grid(row=5, column=0, columnspan=3, padx=(10,0), sticky="ew")
+        self.log_text = tk.Text(self, wrap="word", height=14, width=20)
+        self.log_text.grid(row=5, column=0, columnspan=3, padx=(10, 0), sticky="ew")
 
         # Scrollbar für das Log-Text-Widget
         scrollbar = ttk.Scrollbar(self, command=self.log_text.yview)
-        scrollbar.grid(row=5, column=3, sticky="ns")  # Scrollbar in column 2
+        scrollbar.grid(row=5, column=3, sticky="ns")  
         self.log_text["yscrollcommand"] = scrollbar.set
-
-        scrollbar = ttk.Scrollbar(self, command=self.log_text.yview)
-        scrollbar.grid(row=5, column=3, sticky="ns")
-
-        # WICHTIG: Das Text-Widget muss dem Scrollbar mitteilen, wann es gescrollt wird.
-        self.log_text.configure(yscrollcommand=scrollbar.set)
 
         # MANUELLE AKTIONEN
         ## Manual NEXT
@@ -208,6 +204,7 @@ class Paparazzo(tk.Tk):
     # GENERIEREN & HOCHLADEN
     def on_generate_and_upload(self):
         """Button-Klick: Erstellt config.h, kompiliert und lädt den Sketch hoch."""
+        log_message("Starte Konfiguration...", "info")
         REPEATS = self.repeats_var.get()
         PAUSE_MS = self.pause_var.get()
 
