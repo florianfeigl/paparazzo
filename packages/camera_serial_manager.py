@@ -9,8 +9,8 @@ import serial
 from picamera2 import Picamera2
 
 from packages.config import (ARDUINO_CLI_PATH, BAUD_RATE, CONFIG_FILE,
-                             FIRMWARE_DIR, FQBN, IMAGES_DIR, SERIAL_PORT,
-                             TEMPLATE_FILE)
+                             FIRMWARE_DIR, FQBN, IMAGES_DIR, POSITIONS_COLUMN,
+                             POSITIONS_ROW, SERIAL_PORT, TEMPLATE_FILE)
 from packages.logger import log_message
 
 
@@ -23,6 +23,7 @@ class CameraSerialManager:
         self.serial_connection = None
         self.polling_thread = None
         self.polling_active = None
+        self.run_id = time.strftime("%Y%m%d_%H%M%S")  # Setzen der run_id
         self.init_camera()
         self.init_serial()
 
@@ -40,7 +41,7 @@ class CameraSerialManager:
             log_message("Kamera erfolgreich erstellt.", "info")
 
             # DEBUG: Liste der Kamera-Modi abrufen
-            log_message(f"Kamera-Modi: {self.picam.sensor_modes}", "debug")
+            # log_message(f"Kamera-Modi: {self.picam.sensor_modes}", "debug")
 
             # Prüfen, ob Kamera verfügbar ist
             if not hasattr(self.picam, "camera_config"):
@@ -74,7 +75,7 @@ class CameraSerialManager:
             self.serial_connection = None
 
     def send_command(self, command):
-        """Sendet einen Befehl an den Arduino (z. B. 'START', 'NEXT', 'ABORT')."""
+        """Sendet einen Befehl an den Arduino (z. B. 'START', 'NEXT_MOVE', 'ABORT')."""
         if self.serial_connection and self.serial_connection.is_open:
             self.serial_connection.write((command + "\n").encode("utf-8"))
             self.serial_connection.flush()
@@ -165,26 +166,22 @@ class CameraSerialManager:
                     )
 
                     # Debugging-Log
-                    #log_message(f"DEBUG: Empfangene Zeile: {raw_line}")
+                    # log_message(f"DEBUG: Empfangene Zeile: {raw_line}")
 
-                    # Falls die Nachricht im falschen Format ist, logge sie
+                    # Prüfe, bis gültiges Format gefunden wird
                     if not raw_line.startswith("<") or not raw_line.endswith(">"):
-                        #log_message(
-                        #    f"Kein gültiges Muster: {raw_line}",
-                        #    "info",
-                        #)
                         continue
 
                     # Inhalt extrahieren
                     command = raw_line[1:-1]
 
                     if command == "MOVE_COMPLETED":
-                        log_message(
-                            "'MOVE_COMPLETED' empfangen, nehme Foto auf.", "info"
+                        log_message("<= RPi4: 'MOVE_COMPLETED'", "info")
+                        self.take_photo(
+                            self.PASS_COUNT, POSITIONS_COLUMN, POSITIONS_ROW
                         )
-                        self.take_photo(self.PASS_COUNT, self.MOVE_COUNT)
                         self.MOVE_COUNT += 1
-                        self.send_command("NEXT")
+                        self.send_command("NEXT_MOVE")
                     elif command == "DONE":
                         log_message("'DONE' empfangen, beende Polling.", "info")
                         self.stop_polling()
@@ -198,44 +195,56 @@ class CameraSerialManager:
     def stop_polling(self):
         """Beendet den Polling-Thread sicher."""
         log_message("Beende Arduino-Polling-Thread...")
+
         self.polling_active = False
+
         if self.polling_thread and self.polling_thread.is_alive():
             self.polling_thread.join(timeout=2)
         self.polling_thread = None
 
-    def take_photo(self, PASS_COUNT, MOVE_COUNT):
+    def take_photo(self, PASS_COUNT, POSITIONS_COLUMN, POSITIONS_ROW):
         """Nimmt ein Foto auf und speichert es mit einem passenden Dateinamen."""
+        log_message("Nehme Foto auf...")
+
         if not self.picam:
             log_message("Kamera nicht verfügbar!", "error")
             return
 
+        # Bildsensor-Größe abrufen
+        sensor_size = self.picam.sensor_resolution  # (Width, Height)
+        width, height = sensor_size
+
+        # % Ausschnitt berechnen, mittig
+        new_width, new_height = int(width * 0.5), int(height * 0.5)
+        x = (width - new_width) // 2
+        y = (height - new_height) // 2
+
+        # Kamera Cropping setzen
+        self.picam.set_controls({"ScalerCrop": (x, y, new_width, new_height)})
+        log_message(f"Crop-Bereich: x={x}, y={y}, width={new_width}, height={new_height}")
+
+
+        col_index = self.MOVE_COUNT % len(POSITIONS_COLUMN)
+        row_index = self.MOVE_COUNT // len(POSITIONS_COLUMN)
+        col_value = POSITIONS_COLUMN[col_index]
+        row_value = POSITIONS_ROW[row_index]
+
         # Bestimme die Dateistruktur
         timestamp = time.strftime("%Y%m%d_%H%M%S")
-        filename = f"photo_pass{PASS_COUNT}_move{MOVE_COUNT}_{timestamp}.jpg"
-        folder = os.path.join(IMAGES_DIR, f"pass_{PASS_COUNT:02d}")
-        os.makedirs(folder, exist_ok=True)
-        filepath = os.path.join(folder, filename)
+        filename = f"{timestamp}_WELL_{row_value}{col_value}.jpg"
+
+        # Erstelle den Ordner: IMAGES_DIR/RUN/PASS/
+        run_folder = os.path.join(IMAGES_DIR, self.run_id)
+        if not os.path.exists(run_folder):  # `run_...` nur einmal erstellen!
+            os.makedirs(run_folder)
+
+        pass_folder = os.path.join(run_folder, f"pass_{PASS_COUNT:02d}")
+
+        filepath = os.path.join(pass_folder, filename)
 
         try:
+            os.makedirs(pass_folder, exist_ok=True)
             self.picam.capture_file(filepath)
             log_message(f"Foto aufgenommen: {filepath}")
         except Exception as e:
             log_message(f"Fehler bei der Fotoaufnahme: {e}", "error")
-
-    def read_arduino_response(self):
-        """Liest eine Zeile von der seriellen Schnittstelle."""
-        if not self.serial_connection or not self.serial_connection.is_open:
-            return None
-
-        try:
-            raw_line = (
-                self.serial_connection.readline()
-                .decode("utf-8", errors="ignore")
-                .strip()
-            )
-            if raw_line.startswith("<") and raw_line.endswith(">"):
-                return raw_line[1:-1]  # Entferne die eckigen Klammern <...>
-            return raw_line
-        except Exception as e:
-            log_message(f"Fehler beim Lesen der seriellen Verbindung: {e}", "error")
-            return None

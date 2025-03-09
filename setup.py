@@ -3,7 +3,7 @@
 # ----------------------------------------------------------------------------
 # Author            : Florian Feigl (florian.feigl@stud.plus.ac.at)
 # Supervisor        : Prof. Dr. Obermeyer (gerhard.obermeyer@plus.ac.at)
-# Modified          : 04.03.2025
+# Modified          : 09.03.2025
 #
 # Abstract          :
 # This program serves the purpose of moving two stepper motors to scan a two
@@ -43,7 +43,7 @@ last_modified = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(os.path.getmti
 
 setup(
     name="paparazzo",
-    version="0.7.1",
+    version="0.7.2",
     description="Paparazzo Project: Arduino- und Kamera-Integration",
     author="Florian Feigl",
     author_email="florian.feigl@stud.plus.ac.at",

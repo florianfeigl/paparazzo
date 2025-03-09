@@ -1,9 +1,6 @@
 #include "config.h"
 #include <AccelStepper.h>
 
-// Serielle Schnittstelle
-const int SERIAL_BAUD = 9600;
-
 // AccelStepper-Objekte anlegen (DRIVER-Modus: stepPin, dirPin)
 AccelStepper stepper_column(AccelStepper::DRIVER, STEP_PIN_COLUMN, DIR_PIN_COLUMN);
 AccelStepper stepper_row(AccelStepper::DRIVER, STEP_PIN_ROW, DIR_PIN_ROW);
@@ -17,9 +14,11 @@ const int max_speed = MAX_SPEED;
 const int accel = ACCEL;
 
 // 1/16 Microstepping @ 200 Steps/Rev => 3200 Steps/Umdrehung
-const int steps_per_revolution = STEPS_PER_REV;
-const long distance_columns = 1.2 * steps_per_revolution;
-const long distance_rows = 0.24 * steps_per_revolution;
+const int steps_base_value = STEPS_BASE_VALUE;
+const int microsteps_per_step = MICROSTEPS_PER_STEP;
+const int steps_per_revolution = STEPS_BASE_VALUE * MICROSTEPS_PER_STEP;
+const long distance_columns = DISTANCE_COLS * steps_per_revolution;
+const long distance_rows = DISTANCE_ROWS * steps_per_revolution;
 
 // Startposition als 0 definieren
 long positions_column[COLUMNS];
@@ -44,11 +43,11 @@ void setup() {
     stepper_row.setAcceleration(accel);
     stepper_row.setMaxSpeed(max_speed);
 
-    // Startposition zurücksetzen
+    // Startposition zurücksetzen (aktuelle Position = 0)
     stepper_column.setCurrentPosition(0);
     stepper_row.setCurrentPosition(0);
 
-    // Schrittweiten vorbereiten
+    // Positionen festlegen
     for (int i = 0; i < 6; i++) {
         positions_column[i] = i * distance_columns;
     }
@@ -61,8 +60,8 @@ void setup() {
     pinMode(enable_stepper_columns, OUTPUT);
 
     // Motoren deaktivieren (HIGH = disabled)
-    digitalWrite(enable_stepper_rows, HIGH);
-    digitalWrite(enable_stepper_columns, HIGH);
+    //digitalWrite(enable_stepper_rows, HIGH);
+    //digitalWrite(enable_stepper_columns, HIGH);
 
     // Treiber aktivieren (LOW = enabled)
     digitalWrite(enable_stepper_rows, LOW);
@@ -79,7 +78,7 @@ void loop() {
             }
             stepper_column.runToNewPosition(0);
             if (y < 3) {
-                moveToNextColumn(y + 1);
+                moveToNextRow(y + 1);
             }
         }
         returnToHome();
@@ -98,9 +97,9 @@ void moveToWell(int x, int y) {
     waitForNextCommand();
 }
 
-void moveToNextColumn(int y) {
-    Serial.println("Moving to next column y: " + String(y));
-    stepper_column.runToNewPosition(positions_column[y]);
+void moveToNextRow(int y) {
+    Serial.println("Moving to next row y: " + String(y));
+    stepper_row.runToNewPosition(positions_row[y]);
 }
 
 void returnToHome() {
@@ -139,14 +138,20 @@ void waitForNextCommand() {
         if (Serial.available() > 0) {
             String command = Serial.readStringUntil('\n');
             command.trim();
-            if (command.equals("NEXT")) {
-                Serial.println("✅ Received 'NEXT'. Moving to next position.");
+            command.toUpperCase();
+
+            Serial.print("DEBUG: Empfangener Befehl: ");
+            Serial.println(command); // Debugging: Zeige empfangenen Text
+
+            if (command.equals("NEXT_MOVE")) {
+                Serial.println("✅ Received 'NEXT_MOVE'. Moving to next position.");
                 break;
             } else if (command.equals("ABORT")) {
                 handleAbort();
                 break;
             }
         }
+        delay(10); // CPU entlasten
     }
 }
 

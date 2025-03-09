@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 
+import datetime
 import os
 import time
 import tkinter as tk
-from tkinter import ttk
+from tkinter import Toplevel, ttk
+
+import pkg_resources
 
 from packages.camera_serial_manager import CameraSerialManager
 from packages.config import IMAGES_DIR, PASS_COUNT, RUN_DIR
@@ -12,6 +15,13 @@ from packages.logger import (gui_instance, log_message, set_gui_instance,
 
 # Logger zuweisen
 logger = setup_logging()
+
+
+def get_version():
+    try:
+        return pkg_resources.get_distribution("paparazzo").version
+    except pkg_resources.DistributionNotFound:
+        return "Unknown"
 
 
 class Paparazzo(tk.Tk):
@@ -26,7 +36,8 @@ class Paparazzo(tk.Tk):
         global gui_instance
 
         # GUI Titel
-        self.title("Paparazzo GUI")
+        version = get_version()
+        self.title(f"Paparazzo v{version}")
 
         # GUI Darstellung
         style = ttk.Style()
@@ -56,9 +67,10 @@ class Paparazzo(tk.Tk):
         log_message("Starte Paparazzo GUI...", "info")
         log_message("Initialisiere Log System...", "info")
 
-        self.manager = CameraSerialManager()  # führt init_camera bereits aus!
+        # Initialisiert und konfiguriert Kamera
+        self.manager = CameraSerialManager()
 
-        # 3) Zum Schluss Polling für Arduino starten
+        # Polling für Arduino starten
         self.after(100, self.manager.start_polling)
 
     def create_widgets(self):
@@ -109,17 +121,23 @@ class Paparazzo(tk.Tk):
         label_frame.grid(row=1, column=0, sticky="ew")
 
         # Wiederholungen Label
-        tk.Label(label_frame, text="Wiederholungen", bg="lightgreen", font=("Helvetica", 11, "bold")).grid(
-            row=0, column=0, ipadx=10, ipady=10
-        )
+        tk.Label(
+            label_frame,
+            text="Wiederholungen",
+            background="lightgreen",
+            font=("Helvetica", 10, "bold"),
+        ).grid(row=0, column=0, ipadx=10, ipady=10)
 
         # Platzhalterzelle in Zeile 0, Spalte 1 (keine Widgets hier)
         tk.Label(label_frame, text="").grid(row=0, column=1, sticky="ew")
 
         # Pausenlabel
-        tk.Label(label_frame, text="Pause (Minuten)", bg="yellow", font=("Helvetica", 11, "bold")).grid(
-            row=0, column=2, ipadx=10, ipady=10
-        )
+        tk.Label(
+            label_frame,
+            text="Pause [min]",
+            background="yellow",
+            font=("Helvetica", 10, "bold"),
+        ).grid(row=0, column=2, ipadx=10, ipady=10)
         # Pause (in Minuten): [<] [Textfeld] [>]
         pause_frame = ttk.Frame(self, style="Pause.TFrame")
         pause_frame.grid(row=2, column=0)
@@ -157,11 +175,11 @@ class Paparazzo(tk.Tk):
         # Generieren & Hochladen
         gen_upload_btn = ttk.Button(
             execution_frame,
-            text="Generieren & Laden",
-            command=self.on_generate_and_upload,
+            text="Konfigurieren",
+            command=self.on_configure,
             width=16,
         )
-        gen_upload_btn.grid(row=0, column=1, ipadx=12, ipady=12)
+        gen_upload_btn.grid(row=0, column=1, padx=10, ipadx=12, ipady=12)
 
         # Programm START
         start_btn = ttk.Button(
@@ -172,7 +190,7 @@ class Paparazzo(tk.Tk):
         )
         start_btn.grid(row=1, column=1, padx=10, pady=10, ipadx=12, ipady=12)
 
-        # Abbrechen
+        # Abbrechen 
         abort_btn = ttk.Button(
             execution_frame, text="Abbrechen", command=self.on_abort, width=16
         )
@@ -182,11 +200,29 @@ class Paparazzo(tk.Tk):
         administration_frame = ttk.Frame(self)
         administration_frame.grid(row=0, rowspan=3, column=2)
 
+        # Positionieren
+        position_button = ttk.Button(
+            administration_frame,
+            text="Positionieren",
+            command=self.on_open_manual_position_popup,
+            width=16,
+        )
+        position_button.grid(row=0, column=2, padx=10, ipadx=12, ipady=12)
+
+        # Fotografieren
+        photo_button = ttk.Button(
+            administration_frame,
+            text="Fotografieren",
+            command=self.on_take_photo,
+            width=16,
+        )
+        photo_button.grid(row=1, column=2, padx=10, pady=10, ipadx=12, ipady=12)
+
         # Schließen
         close_button = ttk.Button(
             administration_frame, text="Schließen", command=self.on_close, width=16
         )
-        close_button.grid(row=1, column=2, padx=10, ipadx=14, ipady=14)
+        close_button.grid(row=2, column=2, padx=10, ipadx=12, ipady=12)
 
         # Log-Text-Widget initialisieren
         self.log_text = tk.Text(self, wrap="word", height=14, width=20)
@@ -194,19 +230,16 @@ class Paparazzo(tk.Tk):
 
         # Scrollbar für das Log-Text-Widget
         scrollbar = ttk.Scrollbar(self, command=self.log_text.yview)
-        scrollbar.grid(row=5, column=3, sticky="ns")  
+        scrollbar.grid(row=5, column=3, sticky="ns")
         self.log_text["yscrollcommand"] = scrollbar.set
 
-        # MANUELLE AKTIONEN
-        ## Manual NEXT
-        ## Manual PHOTO
-
-    # GENERIEREN & HOCHLADEN
-    def on_generate_and_upload(self):
+    # Konfigurieren
+    def on_configure(self):
         """Button-Klick: Erstellt config.h, kompiliert und lädt den Sketch hoch."""
         log_message("Starte Konfiguration...", "info")
         REPEATS = self.repeats_var.get()
-        PAUSE_MS = self.pause_var.get()
+        PAUSE = self.pause_var.get()
+        PAUSE_MS = PAUSE * 60000
 
         if REPEATS < 1:
             log_message(
@@ -238,12 +271,18 @@ class Paparazzo(tk.Tk):
 
     def start_pass_folder(self):
         """Legt den Unterordner (pass_01, pass_02, ...) für den aktuellen Pass an."""
-        # Falls self.RUN_DIR noch nicht gesetzt ist, verwende IMAGES_DIR als Fallback
-        BASE_DIR = RUN_DIR if RUN_DIR is not None else IMAGES_DIR
+        global RUN_DIR
+
+        if RUN_DIR is None:
+            log_message("FEHLER: RUN_DIR wurde nicht gesetzt!", "error")
+            return  # Funktion abbrechen, falls kein gültiger RUN_DIR existiert
+
         PASS_FOLDER_NAME = f"pass_{PASS_COUNT:02d}"
-        self.CURRENT_PASS_DIR = os.path.join(BASE_DIR, PASS_FOLDER_NAME)
+        self.CURRENT_PASS_DIR = os.path.join(RUN_DIR, PASS_FOLDER_NAME)
+
         os.makedirs(self.CURRENT_PASS_DIR, exist_ok=True)
         log_message(f"Neuer Pass-Ordner angelegt: {self.CURRENT_PASS_DIR}", "info")
+
         self.MOVE_COUNT = 0
 
     # Input button functions
@@ -261,13 +300,58 @@ class Paparazzo(tk.Tk):
         if self.pause_var.get() > 1:
             self.pause_var.set(self.pause_var.get() - 1)
 
-    # ABBRECHEN
+    # Abbrechen
     def on_abort(self):
         """Button-Klick: Sende 'ABORT' an Arduino, der daraufhin abbrechen soll."""
         log_message("Sende 'ABORT' an Arduino...", "info")
         self.manager.send_command("ABORT")
 
-    # SCHLIESSEN
+    # Dummy function to move to position
+    def move_to_position(self, row, col):
+        print(f"Moving to position {row}{col}")
+        # Hier Steuerungsbefehl für die Bewegung einfügen
+
+    def on_take_photo(self):
+        now = datetime.datetime.now()
+        date_str = now.strftime("%Y%m%d")
+        time_str = now.strftime("%Y%m%d_%H%M%S")
+
+        row_value, col_value = "X", "X"  # Hier Werte von der aktuellen Position holen
+
+        dir_path = f"Paparazzo/images/manual_{date_str}/"
+        os.makedirs(dir_path, exist_ok=True)
+        file_path = os.path.join(
+            dir_path, f"{time_str}_{row_value}{col_value}_manual_shot.jpg"
+        )
+
+        print(f"Foto gespeichert unter: {file_path}")
+        # Hier Kamera-Befehl zum Speichern des Bildes einfügen
+
+    def on_open_manual_position_popup(self):
+        popup = Toplevel(self)
+        popup.title("Manuelle Position wählen")
+
+        # Manuelle Positions-Buttons
+        for row in "ABCD":
+            for col in range(1, 7):
+                btn = tk.Button(
+                    popup,
+                    text=f"{row}{col}",
+                    command=lambda r=row, c=col: self.move_to_position(r, c),
+                )
+                btn.grid(row=ord(row) - ord("A"), column=col - 1, padx=5, pady=5)
+
+        # Fotografieren-Button
+        shoot_btn = tk.Button(
+            popup, text="Fotografieren", command=self.on_take_photo
+        )
+        shoot_btn.grid(row=4, column=0, columnspan=6, padx=5, pady=10, sticky="ew")
+
+        # Fenster schließen-Button
+        close_btn = tk.Button(popup, text="Fenster schließen", command=popup.destroy)
+        close_btn.grid(row=5, column=0, columnspan=6, padx=5, pady=10, sticky="ew")
+
+    # Schließen
     def on_close(self):
         """Sauberes Beenden der GUI und aller verbundenen Prozesse."""
         log_message("Beende Programm...", "info")
@@ -301,8 +385,12 @@ class Paparazzo(tk.Tk):
         3) Legt den ersten Pass-Unterordner an.
         4) Schickt 'START' an Arduino.
         """
-        now_str = time.strftime("run_%Y%m%d_%H%M%S")
-        RUN_DIR = os.path.join(IMAGES_DIR, now_str)
+        now_str = time.strftime("%Y%m%d_%H%M%S")
+        self.manager.run_id = f"run_{now_str}"
+
+        global RUN_DIR
+        RUN_DIR = os.path.join(IMAGES_DIR, self.manager.run_id)
+
         os.makedirs(RUN_DIR, exist_ok=True)
         log_message(f"Neuer Lauf-Ordner: {RUN_DIR}", "info")
 
