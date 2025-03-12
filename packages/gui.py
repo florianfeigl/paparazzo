@@ -2,14 +2,12 @@
 
 import datetime
 import os
-import time
 import tkinter as tk
 from tkinter import Toplevel, ttk
 
 import pkg_resources
 
 from packages.camera_serial_manager import CameraSerialManager
-from packages.config import IMAGES_DIR, PASS_COUNT, RUN_DIR
 from packages.logger import (gui_instance, log_message, set_gui_instance,
                              setup_logging)
 
@@ -73,6 +71,7 @@ class Paparazzo(tk.Tk):
         # Polling für Arduino starten
         self.after(100, self.manager.start_polling)
 
+    # GUI aufbauen
     def create_widgets(self):
         """Erstellt alle Tkinter-Widgets und legt das Layout fest."""
         # Spaltenanpassung
@@ -190,7 +189,7 @@ class Paparazzo(tk.Tk):
         )
         start_btn.grid(row=1, column=1, padx=10, pady=10, ipadx=12, ipady=12)
 
-        # Abbrechen 
+        # Abbrechen
         abort_btn = ttk.Button(
             execution_frame, text="Abbrechen", command=self.on_abort, width=16
         )
@@ -233,58 +232,6 @@ class Paparazzo(tk.Tk):
         scrollbar.grid(row=5, column=3, sticky="ns")
         self.log_text["yscrollcommand"] = scrollbar.set
 
-    # Konfigurieren
-    def on_configure(self):
-        """Button-Klick: Erstellt config.h, kompiliert und lädt den Sketch hoch."""
-        log_message("Starte Konfiguration...", "info")
-        REPEATS = self.repeats_var.get()
-        PAUSE = self.pause_var.get()
-        PAUSE_MS = PAUSE * 60000
-
-        if REPEATS < 1:
-            log_message(
-                "Unzulässige Eingabe. Bitte eine Zahl größer als 0 für Wiederholungen eingeben.",
-                "error",
-            )
-            return
-        if PAUSE_MS < 1:
-            log_message(
-                "Unzulässige Eingabe. Bitte eine Zahl größer als 0 für Pause (Minuten) eingeben.",
-                "error",
-            )
-            return
-
-        # Werte
-        REPEATS = int(REPEATS)
-        PAUSE_MS = int(PAUSE_MS)
-
-        # 1) config.h generieren
-        self.manager.generate_config_file(REPEATS, PAUSE_MS)
-
-        # 2) Kompilieren
-        self.manager.compile_sketch()
-
-        # 3) Hochladen
-        self.manager.upload_sketch()
-
-        log_message("Fertig!", "info")
-
-    def start_pass_folder(self):
-        """Legt den Unterordner (pass_01, pass_02, ...) für den aktuellen Pass an."""
-        global RUN_DIR
-
-        if RUN_DIR is None:
-            log_message("FEHLER: RUN_DIR wurde nicht gesetzt!", "error")
-            return  # Funktion abbrechen, falls kein gültiger RUN_DIR existiert
-
-        PASS_FOLDER_NAME = f"pass_{PASS_COUNT:02d}"
-        self.CURRENT_PASS_DIR = os.path.join(RUN_DIR, PASS_FOLDER_NAME)
-
-        os.makedirs(self.CURRENT_PASS_DIR, exist_ok=True)
-        log_message(f"Neuer Pass-Ordner angelegt: {self.CURRENT_PASS_DIR}", "info")
-
-        self.MOVE_COUNT = 0
-
     # Input button functions
     def increment_repeats(self):
         self.repeats_var.set(self.repeats_var.get() + 1)
@@ -300,17 +247,96 @@ class Paparazzo(tk.Tk):
         if self.pause_var.get() > 1:
             self.pause_var.set(self.pause_var.get() - 1)
 
+    # Konfigurieren
+    def on_configure(self):
+        """Button-Klick: Erstellt config.h, kompiliert und lädt den Sketch hoch."""
+        log_message("Starte Konfiguration...", "info")
+        success = self.prepare_and_upload_sketch()
+
+        if success:
+            log_message("Fertig!", "info")
+        else:
+            log_message("Konfiguration fehlgeschlagen!", "error")
+
+    # Sketch vorbereiten und laden 
+    def prepare_and_upload_sketch(self):
+        """Generiert config.h, kompiliert und lädt den Sketch hoch."""
+        REPEATS = self.repeats_var.get()
+        PAUSE = self.pause_var.get()
+        PAUSE_MS = PAUSE * 60000
+
+        if REPEATS < 1:
+            log_message(
+                "Unzulässige Eingabe. Bitte eine Zahl größer als 0 für Wiederholungen eingeben.",
+                "error",
+            )
+            return False  # signalisiert Fehlschlag
+
+        if PAUSE_MS < 60000:
+            log_message(
+                "Unzulässige Eingabe. Bitte eine Zahl größer als 1 Minute für Pause eingeben.",
+                "error",
+            )
+            return False  # signalisiert Fehlschlag
+
+        self.manager.generate_config_file(REPEATS, PAUSE_MS)
+        self.manager.compile_sketch()
+        self.manager.upload_sketch()
+
+        log_message("Konfiguration abgeschlossen!", "info")
+        return True  # signalisiert Erfolg
+
+    # Starten
+    def on_start_program(self):
+        if not self.prepare_and_upload_sketch():
+            log_message("Programmstart abgebrochen.", "error")
+            return
+
+        self.manager.reset_pass_count()
+        self.manager.reset_move_count()
+
+        self.manager.setup_run_directory()
+        self.manager.setup_pass_directory()
+
+        log_message("Sende 'START' an Arduino...", "info")
+        self.manager.send_command("START")
+
     # Abbrechen
     def on_abort(self):
         """Button-Klick: Sende 'ABORT' an Arduino, der daraufhin abbrechen soll."""
         log_message("Sende 'ABORT' an Arduino...", "info")
         self.manager.send_command("ABORT")
 
-    # Dummy function to move to position
-    def move_to_position(self, row, col):
+    # Manuelles Positionieren
+    def manual_move_to_position(self, row, col):
         print(f"Moving to position {row}{col}")
         # Hier Steuerungsbefehl für die Bewegung einfügen
 
+    def on_open_manual_position_popup(self):
+        popup = Toplevel(self)
+        popup.title("Manuelle Position wählen")
+
+        # Manuelle Positions-Buttons
+        for row in "ABCD":
+            for col in range(1, 7):
+                btn = tk.Button(
+                    popup,
+                    text=f"{row}{col}",
+                    command=lambda r=row, c=col: self.manual_move_to_position(r, c),
+                )
+                btn.grid(row=ord(row) - ord("A"), column=col - 1, padx=5, pady=5)
+
+        # Fotografieren-Button
+        shoot_btn = tk.Button(popup, text="Fotografieren", command=self.on_take_photo)
+        shoot_btn.grid(row=4, column=0, columnspan=6, padx=5, pady=10, sticky="ew")
+
+        # Fenster schließen-Button
+        close_btn = tk.Button(
+            popup, text="Fenster schließen", command=lambda: self.on_close_popup(popup)
+        )
+        close_btn.grid(row=5, column=0, columnspan=6, padx=5, pady=10, sticky="ew")
+
+    # Fotografieren
     def on_take_photo(self):
         now = datetime.datetime.now()
         date_str = now.strftime("%Y%m%d")
@@ -327,31 +353,15 @@ class Paparazzo(tk.Tk):
         print(f"Foto gespeichert unter: {file_path}")
         # Hier Kamera-Befehl zum Speichern des Bildes einfügen
 
-    def on_open_manual_position_popup(self):
-        popup = Toplevel(self)
-        popup.title("Manuelle Position wählen")
+    # Popup Schließen
+    def on_close_popup(self, popup):
+        if self.manager.picam is not None:
+            self.manager.picam.stop()
+            self.manager.picam.close()
+            self.manager.picam = None
+        popup.destroy()
 
-        # Manuelle Positions-Buttons
-        for row in "ABCD":
-            for col in range(1, 7):
-                btn = tk.Button(
-                    popup,
-                    text=f"{row}{col}",
-                    command=lambda r=row, c=col: self.move_to_position(r, c),
-                )
-                btn.grid(row=ord(row) - ord("A"), column=col - 1, padx=5, pady=5)
-
-        # Fotografieren-Button
-        shoot_btn = tk.Button(
-            popup, text="Fotografieren", command=self.on_take_photo
-        )
-        shoot_btn.grid(row=4, column=0, columnspan=6, padx=5, pady=10, sticky="ew")
-
-        # Fenster schließen-Button
-        close_btn = tk.Button(popup, text="Fenster schließen", command=popup.destroy)
-        close_btn.grid(row=5, column=0, columnspan=6, padx=5, pady=10, sticky="ew")
-
-    # Schließen
+    # Programm Schließen
     def on_close(self):
         """Sauberes Beenden der GUI und aller verbundenen Prozesse."""
         log_message("Beende Programm...", "info")
@@ -375,37 +385,6 @@ class Paparazzo(tk.Tk):
         log_message("GUI wird zerstört...", "info")
         set_gui_instance(None)
         self.destroy()
-
-    # PROGRAMM-START
-    def on_start_program(self):
-        """
-        Wird aufgerufen, wenn "Programm START" geklickt wird.
-        1) Legt einen neuen Hauptordner an.
-        2) Liest REPEATS aus GUI.
-        3) Legt den ersten Pass-Unterordner an.
-        4) Schickt 'START' an Arduino.
-        """
-        now_str = time.strftime("%Y%m%d_%H%M%S")
-        self.manager.run_id = f"run_{now_str}"
-
-        global RUN_DIR
-        RUN_DIR = os.path.join(IMAGES_DIR, self.manager.run_id)
-
-        os.makedirs(RUN_DIR, exist_ok=True)
-        log_message(f"Neuer Lauf-Ordner: {RUN_DIR}", "info")
-
-        REPEATS = self.repeats_var.get()
-        if REPEATS < 1:
-            log_message(
-                "Unzulässige Eingabe. Bitte eine Zahl größer als 0 für Wiederholungen eingeben.",
-                "error",
-            )
-            return
-
-        self.start_pass_folder()
-
-        log_message("Sende 'START' an Arduino...", "info")
-        self.manager.send_command("START")
 
 
 def main():

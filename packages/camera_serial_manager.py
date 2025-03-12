@@ -10,7 +10,8 @@ from picamera2 import Picamera2
 
 from packages.config import (ARDUINO_CLI_PATH, BAUD_RATE, CONFIG_FILE,
                              FIRMWARE_DIR, FQBN, IMAGES_DIR, POSITIONS_COLUMN,
-                             POSITIONS_ROW, SERIAL_PORT, TEMPLATE_FILE)
+                             POSITIONS_ROW, SERIAL_PORT, TEMPLATE_FILE,
+                             TOTAL_STATIONS)
 from packages.logger import log_message
 
 
@@ -26,6 +27,25 @@ class CameraSerialManager:
         self.run_id = time.strftime("%Y%m%d_%H%M%S")  # Setzen der run_id
         self.init_camera()
         self.init_serial()
+
+    # Counter Value Managment
+    def increment_move_count(self):
+        self.MOVE_COUNT += 1
+
+    def reset_move_count(self):
+        self.MOVE_COUNT = 0
+
+    def increment_pass_count(self):
+        self.PASS_COUNT += 1
+
+    def reset_pass_count(self):
+        self.PASS_COUNT = 0
+
+    def get_current_move_count(self):
+        return self.MOVE_COUNT
+
+    def get_current_pass_count(self):
+        return self.PASS_COUNT
 
     def init_camera(self):
         """Sichere Initialisierung der Kamera mit Fehlerprüfung."""
@@ -50,7 +70,6 @@ class CameraSerialManager:
 
             log_message("Kamera wird konfiguriert...", "info")
             self.picam.configure(self.picam.create_still_configuration())
-            self.picam.start_preview()
 
             if self.picam.started:
                 log_message("Kamera läuft bereits, überspringe start().", "info")
@@ -74,6 +93,7 @@ class CameraSerialManager:
             log_message(f"Fehler beim Öffnen des seriellen Ports: {e}", "error")
             self.serial_connection = None
 
+    # Befehle an Raspberry senden und loggen
     def send_command(self, command):
         """Sendet einen Befehl an den Arduino (z. B. 'START', 'NEXT_MOVE', 'ABORT')."""
         if self.serial_connection and self.serial_connection.is_open:
@@ -83,7 +103,8 @@ class CameraSerialManager:
         else:
             log_message("Serielle Verbindung nicht verfügbar!", "error")
 
-    def generate_config_file(self, REPEATS, PAUSE_MS):
+    # Konfigurationsdatei generieren
+    def generate_config_file(self, REPEATS, PAUSE):
         """
         Liest config_template.h, ersetzt Platzhalter und schreibt config.h.
         """
@@ -94,7 +115,7 @@ class CameraSerialManager:
 
             # Platzhalter ersetzen
             content = content.replace("{{REPEATS_PLACEHOLDER}}", str(REPEATS))
-            content = content.replace("{{PAUSE_PLACEHOLDER}}", str(PAUSE_MS))
+            content = content.replace("{{PAUSE_PLACEHOLDER}}", str(PAUSE))
 
             # Neue config.h schreiben
             with open(CONFIG_FILE, "w") as config:
@@ -105,7 +126,7 @@ class CameraSerialManager:
         except FileNotFoundError:
             log_message(f"FEHLER: {TEMPLATE_FILE} wurde nicht gefunden.", "error")
 
-    # SKETCH KOMPILIEREN
+    # Arduino Sketch kompilieren
     def compile_sketch(self):
         """Ruft arduino-cli compile auf."""
         log_message("Kompiliere Sketch...", "info")
@@ -117,7 +138,7 @@ class CameraSerialManager:
         except subprocess.CalledProcessError as e:
             log_message(f"Fehler bei der Kompilierung: {e}", "error")
 
-    # SKETCH HOCHLADEN
+    # Arduino Sketch hochladen
     def upload_sketch(self):
         """Ruft arduino-cli upload auf."""
         log_message("Lade hoch...", "info")
@@ -138,113 +159,145 @@ class CameraSerialManager:
         except subprocess.CalledProcessError as e:
             log_message(f"Fehler beim Upload: {e}", "error")
 
-    # Polling
+    # Polling Start Helper
     def start_polling(self):
-        """Startet das Polling in einem separaten Thread."""
-        if hasattr(self, "polling_thread") and self.polling_thread is not None:
+        """Startet Polling in eigenem Thread, falls noch nicht aktiv."""
+        if self.polling_thread and self.polling_thread.is_alive():
             log_message("Polling-Thread läuft bereits!", "warning")
             return
 
-        log_message("Starte Arduino-Polling-Thread...")
+        log_message("Starte Arduino-Polling-Thread...", "info")
         self.polling_active = True
         self.polling_thread = threading.Thread(target=self.poll_arduino, daemon=True)
         self.polling_thread.start()
 
-    def poll_arduino(self):
-        """Liest Daten von der seriellen Verbindung im Thread."""
-        if not self.serial_connection or not self.serial_connection.is_open:
-            log_message("Serielle Verbindung nicht verfügbar!", "error")
-            return
+    # Polling Stop Helper
+    def stop_polling(self):
+        """Stoppt den Polling-Thread sicher und wartet auf dessen Ende."""
+        log_message("Beende Arduino-Polling-Thread...", "info")
+        self.polling_active = False
 
+        if (
+            self.polling_thread
+            and threading.current_thread() is not self.polling_thread
+        ):
+            self.polling_thread.join(timeout=2)
+            self.polling_thread = None
+
+    # Restart Polling
+    def restart_polling_thread(self):
+        """Thread sicher beenden und nach Pause neu starten."""
+        log_message("Starte Polling nach kurzer Wartezeit neu...", "info")
+        self.polling_active = False  # Stoppt und räumt aktuellen Thread sauber auf
+        time.sleep(1)
+        self.start_polling()  # Erstellt und startet neuen Polling-Thread
+
+    # Polling
+    def poll_arduino(self):
+        """Pollt den Arduino in einem separaten Thread."""
+        log_message("Arduino-Polling gestartet.", "info")
         while self.polling_active:
             try:
-                if self.serial_connection.in_waiting > 0:
-                    raw_line = (
-                        self.serial_connection.readline()
-                        .decode("utf-8", errors="ignore")
-                        .strip()
-                    )
-
-                    # Debugging-Log
-                    # log_message(f"DEBUG: Empfangene Zeile: {raw_line}")
-
-                    # Prüfe, bis gültiges Format gefunden wird
-                    if not raw_line.startswith("<") or not raw_line.endswith(">"):
-                        continue
-
-                    # Inhalt extrahieren
-                    command = raw_line[1:-1]
-
-                    if command == "MOVE_COMPLETED":
-                        log_message("<= RPi4: 'MOVE_COMPLETED'", "info")
-                        self.take_photo(
-                            self.PASS_COUNT, POSITIONS_COLUMN, POSITIONS_ROW
+                if self.serial_connection and self.serial_connection.is_open:
+                    if self.serial_connection.in_waiting > 0:
+                        raw_line = (
+                            self.serial_connection.readline()
+                            .decode("utf-8", errors="ignore")
+                            .strip()
                         )
-                        self.MOVE_COUNT += 1
-                        self.send_command("NEXT_MOVE")
-                    elif command == "DONE":
-                        log_message("'DONE' empfangen, beende Polling.", "info")
-                        self.stop_polling()
+
+                        if not raw_line.startswith("<") or not raw_line.endswith(">"):
+                            continue
+
+                        command = raw_line[1:-1]
+
+                        if command == "MOVE_COMPLETED":
+                            log_message("<= Raspberry: 'MOVE_COMPLETED'", "info")
+                            self.take_photo()
+                            self.increment_move_count()
+
+                            if self.get_current_move_count() >= TOTAL_STATIONS:
+                                log_message(
+                                    f"Pass {self.get_current_pass_count():02d} abgeschlossen.", "info"
+                                )
+                                self.send_command("NEXT_PASS")
+
+                                # Sauberer Neustart des Threads ohne Rekursion
+                                self.polling_active = False
+                                threading.Thread(
+                                    target=self.restart_polling_thread, daemon=True
+                                ).start()
+
+                                # Counter aktualisieren
+                                self.increment_pass_count()
+                                self.reset_move_count()
+                            else:
+                                self.send_command("NEXT_MOVE")
+                else:
+                    log_message("Serielle Verbindung nicht verfügbar!", "error")
+                    self.polling_active = False
 
             except Exception as e:
                 log_message(f"Fehler im Polling: {e}", "error")
-                break
+                self.polling_active = False
 
-            time.sleep(0.1)  # CPU-Last reduzieren
+            time.sleep(0.1)
 
-    def stop_polling(self):
-        """Beendet den Polling-Thread sicher."""
-        log_message("Beende Arduino-Polling-Thread...")
+        log_message("Arduino-Polling beendet.", "info")
 
-        self.polling_active = False
+    # Laufverzeichnis erstellen
+    def setup_run_directory(self):
+        """Erstellt den Run-Ordner."""
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        self.run_id = f"run_{timestamp}"
+        self.RUN_DIR = os.path.join(IMAGES_DIR, self.run_id)
+        os.makedirs(self.RUN_DIR, exist_ok=True)
+        log_message(f"Laufverzeichnis erstellt: {self.RUN_DIR}")
 
-        if self.polling_thread and self.polling_thread.is_alive():
-            self.polling_thread.join(timeout=2)
-        self.polling_thread = None
+    # Rundenverzeichnis erstellen
+    def setup_pass_directory(self):
+        """Erstellt den Unterordner für den aktuellen Pass."""
+        self.PASS_FOLDER_NAME = f"pass_{self.PASS_COUNT:02d}"
+        self.CURRENT_PASS_DIR = os.path.join(self.RUN_DIR, self.PASS_FOLDER_NAME)
+        os.makedirs(self.CURRENT_PASS_DIR, exist_ok=True)
+        log_message(f"Rundenverzeichnis erstellt: {self.CURRENT_PASS_DIR}")
 
-    def take_photo(self, PASS_COUNT, POSITIONS_COLUMN, POSITIONS_ROW):
-        """Nimmt ein Foto auf und speichert es mit einem passenden Dateinamen."""
-        log_message("Nehme Foto auf...")
-
-        if not self.picam:
-            log_message("Kamera nicht verfügbar!", "error")
-            return
-
-        # Bildsensor-Größe abrufen
-        sensor_size = self.picam.sensor_resolution  # (Width, Height)
-        width, height = sensor_size
-
-        # % Ausschnitt berechnen, mittig
-        new_width, new_height = int(width * 0.5), int(height * 0.5)
-        x = (width - new_width) // 2
-        y = (height - new_height) // 2
-
-        # Kamera Cropping setzen
-        self.picam.set_controls({"ScalerCrop": (x, y, new_width, new_height)})
-        log_message(f"Crop-Bereich: x={x}, y={y}, width={new_width}, height={new_height}")
-
-
+    # Position bestimmen
+    def get_current_position(self):
+        """
+        Ermittelt die aktuelle Position basierend auf MOVE_COUNT.
+        """
         col_index = self.MOVE_COUNT % len(POSITIONS_COLUMN)
         row_index = self.MOVE_COUNT // len(POSITIONS_COLUMN)
         col_value = POSITIONS_COLUMN[col_index]
         row_value = POSITIONS_ROW[row_index]
 
-        # Bestimme die Dateistruktur
+        return col_value, row_value
+
+    # Bild aufnehmen
+    def take_photo(self):
+        log_message("Nehme Bild auf...")
+        if not self.picam:
+            log_message("Kamera nicht verfügbar!", "error")
+            return
+
+        sensor_size = self.picam.sensor_resolution
+        width, height = sensor_size
+
+        new_width, new_height = int(width * 0.6), int(height * 0.6)
+        x = (width - new_width) // 2
+        y = (height - new_height) // 2
+
+        self.picam.set_controls({"ScalerCrop": (x, y, new_width, new_height)})
+        log_message(f"Bildausschnitt: x={x}, y={y}, width={new_width}, height={new_height}")
+
         timestamp = time.strftime("%Y%m%d_%H%M%S")
+        col_value, row_value = self.get_current_position()
         filename = f"{timestamp}_WELL_{row_value}{col_value}.jpg"
-
-        # Erstelle den Ordner: IMAGES_DIR/RUN/PASS/
-        run_folder = os.path.join(IMAGES_DIR, self.run_id)
-        if not os.path.exists(run_folder):  # `run_...` nur einmal erstellen!
-            os.makedirs(run_folder)
-
-        pass_folder = os.path.join(run_folder, f"pass_{PASS_COUNT:02d}")
-
-        filepath = os.path.join(pass_folder, filename)
+        filepath = os.path.join(self.CURRENT_PASS_DIR, filename)
 
         try:
-            os.makedirs(pass_folder, exist_ok=True)
             self.picam.capture_file(filepath)
-            log_message(f"Foto aufgenommen: {filepath}")
+            log_message(f"Bild aufgenommen: {filepath}")
         except Exception as e:
-            log_message(f"Fehler bei der Fotoaufnahme: {e}", "error")
+            log_message(f"Fehler bei der Bildaufnahme: {e}", "error")
