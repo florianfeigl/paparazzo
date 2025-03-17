@@ -47,6 +47,7 @@ class CameraSerialManager:
     def get_current_pass_count(self):
         return self.PASS_COUNT
 
+    # Kamera initialisieren
     def init_camera(self):
         """Sichere Initialisierung der Kamera mit Fehlerprüfung."""
         log_message("Starte init_camera...", "info")
@@ -83,6 +84,7 @@ class CameraSerialManager:
             log_message(f"Kamera-Fehler: {e}", "error")
             self.picam = None
 
+    # Serielle Verbindung
     def init_serial(self):
         """Öffnet die serielle Verbindung zum Arduino."""
         try:
@@ -212,13 +214,14 @@ class CameraSerialManager:
                         command = raw_line[1:-1]
 
                         if command == "MOVE_COMPLETED":
-                            log_message("<= Raspberry: 'MOVE_COMPLETED'", "info")
+                            log_message("Raspberry <= 'MOVE_COMPLETED'", "info")
                             self.take_photo()
                             self.increment_move_count()
 
                             if self.get_current_move_count() >= TOTAL_STATIONS:
                                 log_message(
-                                    f"Pass {self.get_current_pass_count():02d} abgeschlossen.", "info"
+                                    f"Pass {self.get_current_pass_count():02d} abgeschlossen.",
+                                    "info",
                                 )
                                 self.send_command("NEXT_PASS")
 
@@ -230,9 +233,11 @@ class CameraSerialManager:
 
                                 # Counter aktualisieren
                                 self.increment_pass_count()
+                                self.setup_pass_directory()
                                 self.reset_move_count()
                             else:
                                 self.send_command("NEXT_MOVE")
+                                log_message("Arduino => 'NEXT_MOVE'", "info")
                 else:
                     log_message("Serielle Verbindung nicht verfügbar!", "error")
                     self.polling_active = False
@@ -278,7 +283,7 @@ class CameraSerialManager:
     def take_photo(self):
         log_message("Nehme Bild auf...")
         if not self.picam:
-            log_message("Kamera nicht verfügbar!", "error")
+            log_message("🚨 Kamera nicht initialisiert!", "error")
             return
 
         sensor_size = self.picam.sensor_resolution
@@ -289,7 +294,9 @@ class CameraSerialManager:
         y = (height - new_height) // 2
 
         self.picam.set_controls({"ScalerCrop": (x, y, new_width, new_height)})
-        log_message(f"Bildausschnitt: x={x}, y={y}, width={new_width}, height={new_height}")
+        log_message(
+            f"Bildausschnitt: x={x}, y={y}, width={new_width}, height={new_height}"
+        )
 
         timestamp = time.strftime("%Y%m%d_%H%M%S")
         col_value, row_value = self.get_current_position()

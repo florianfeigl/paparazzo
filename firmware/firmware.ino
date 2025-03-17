@@ -42,7 +42,7 @@ void loop() {
             }
             stepper_column.runToNewPosition(0);
             if (y < ROWS - 1) {
-                moveToNextRow(y + 1);
+                moveToNextColumn(y + 1);
             }
         }
         returnToHome();
@@ -95,9 +95,9 @@ void moveToWell(int x, int y) {
     sendStatus("MOVE_COMPLETED");
 }
 
-void moveToNextRow(int y) {
-    Serial.println("↪️ Moving to next row: " + String(y));
-    stepper_row.runToNewPosition(positions_row[y]);
+void moveToNextColumn(int y) {
+    Serial.println("↪️ Moving to next column: " + String(y));
+    stepper_column.runToNewPosition(positions_column[y]);
     sendStatus("ROW_COMPLETED");
 }
 
@@ -111,43 +111,42 @@ void returnToHome() {
 // === Serielle Kommunikationsfunktionen ===
 void waitForStartCommand() {
     Serial.println("🟢 Waiting for START command...");
-    waitForSpecificCommand("START");
+    waitForSpecificCommandWithTimeout("<START>");
+    Serial.println("✅ START received, beginning operation...");
 }
 
 void waitForNextMoveCommand() {
     Serial.println("Waiting for NEXT_MOVE command...");
-    waitForSpecificCommandWithTimeout("NEXT_MOVE", RESPONSE_TIMEOUT);
+    waitForSpecificCommandWithTimeout("<NEXT_MOVE>", RESPONSE_TIMEOUT);
+    Serial.println("✅ NEXT_MOVE received, beginning operation...");
 }
 
 void waitForNextPassCommand() {
     Serial.println("Waiting for NEXT_PASS command...");
-    waitForSpecificCommandWithTimeout("NEXT_PASS", RESPONSE_TIMEOUT);
-}
-
-void waitForSpecificCommand(String expectedCommand) {
-    serialBuffer = "";
-    while (serialBuffer != expectedCommand) {
-        if (Serial.available()) {
-            serialBuffer = Serial.readStringUntil('\n');
-            serialBuffer.trim();
-        }
-    }
+    waitForSpecificCommandWithTimeout("<NEXT_PASS>", RESPONSE_TIMEOUT);
+    Serial.println("✅ NEXT_PASS received, beginning operation...");
 }
 
 void waitForSpecificCommandWithTimeout(String expectedCommand, int timeout) {
     serialBuffer = "";
     unsigned long startMillis = millis();
-    while (serialBuffer != expectedCommand && (millis() - startMillis < timeout)) {
+
+    while (millis() - startMillis < timeout) {
         if (Serial.available()) {
             serialBuffer = Serial.readStringUntil('\n');
             serialBuffer.trim();
+
+            if (serialBuffer == expectedCommand) {
+                Serial.println("✅ " + expectedCommand + " received.");
+                return;
+            } else {
+                Serial.println("❌ Non-functional input: " + serialBuffer);
+                serialBuffer = "";  // Zurücksetzen, um falsche Werte zu vermeiden
+            }
         }
     }
-    if (serialBuffer != expectedCommand) {
-        Serial.println("⏰ Timeout or invalid command received!");
-    } else {
-        Serial.println("✅ " + expectedCommand + " received.");
-    }
+
+    Serial.println("⏰ Timeout waiting for command: " + expectedCommand);
 }
 
 void sendStatus(String status) {
