@@ -16,8 +16,9 @@ from packages.logger import log_message
 
 
 class CameraSerialManager:
-    def __init__(self):
+    def __init__(self, gui=None):
         """Initialisiert Kamera und serielle Verbindung."""
+        self.gui = gui
         self.PASS_COUNT = 0  # Startwert
         self.MOVE_COUNT = 0  # Startwert
         self.picam = None
@@ -110,23 +111,26 @@ class CameraSerialManager:
         """
         Liest config_template.h, ersetzt Platzhalter und schreibt config.h.
         """
-        log_message("Generiere config.h...", "info")
-        try:
-            with open(TEMPLATE_FILE, "r") as template:
-                content = template.read()
+        if self.gui is not None:
+            repeats = self.gui.repeats_var.get()
+            pause = self.gui.pause_var.get() * 60000  # Umrechnung Minuten auf ms
+            log_message(f"Generiere config.h mit repeats={repeats}, pause={pause}ms", "info")
+            try:
+                with open(TEMPLATE_FILE, "r") as template:
+                    content = template.read()
 
-            # Platzhalter ersetzen
-            content = content.replace("{{REPEATS_PLACEHOLDER}}", str(REPEATS))
-            content = content.replace("{{PAUSE_PLACEHOLDER}}", str(PAUSE))
+                # Platzhalter ersetzen
+                content = content.replace("{{REPEATS_PLACEHOLDER}}", str(REPEATS))
+                content = content.replace("{{PAUSE_PLACEHOLDER}}", str(PAUSE))
 
-            # Neue config.h schreiben
-            with open(CONFIG_FILE, "w") as config:
-                config.write(content)
+                # Neue config.h schreiben
+                with open(CONFIG_FILE, "w") as config:
+                    config.write(content)
 
-            log_message("config.h wurde erfolgreich generiert.")
+                log_message("config.h wurde erfolgreich generiert.")
 
-        except FileNotFoundError:
-            log_message(f"FEHLER: {TEMPLATE_FILE} wurde nicht gefunden.", "error")
+            except FileNotFoundError:
+                log_message(f"FEHLER: {TEMPLATE_FILE} wurde nicht gefunden.", "error")
 
     # Arduino Sketch kompilieren
     def compile_sketch(self):
@@ -197,7 +201,9 @@ class CameraSerialManager:
     # Polling
     def poll_arduino(self):
         """Pollt den Arduino in einem separaten Thread."""
-        log_message("Arduino-Polling gestartet.", "info")
+        log_message("Arduino-Abfrage gestartet.", "info")
+        self.polling_active = True
+
         while self.polling_active:
             try:
                 if self.serial_connection and self.serial_connection.is_open:
@@ -214,41 +220,41 @@ class CameraSerialManager:
                         command = raw_line[1:-1]
 
                         if command == "MOVE_COMPLETED":
-                            log_message("Raspberry <= 'MOVE_COMPLETED'", "info")
+                            log_message("<= Raspberry: 'MOVE_COMPLETED'", "info")
                             self.take_photo()
                             self.increment_move_count()
 
                             if self.get_current_move_count() >= TOTAL_STATIONS:
-                                log_message(
-                                    f"Pass {self.get_current_pass_count():02d} abgeschlossen.",
-                                    "info",
-                                )
-                                self.send_command("NEXT_PASS")
-
-                                # Sauberer Neustart des Threads ohne Rekursion
-                                self.polling_active = False
-                                threading.Thread(
-                                    target=self.restart_polling_thread, daemon=True
-                                ).start()
-
-                                # Counter aktualisieren
                                 self.increment_pass_count()
-                                self.setup_pass_directory()
-                                self.reset_move_count()
+
+                                if self.gui.get_repeats() <= self.get_current_pass_count():
+                                    log_message(f"Alle Läufe ({self.get_current_pass_count():02d}) abgeschlossen.", "info")
+                                    self.send_command("END")
+                                    self.polling_active = False
+                                    break  # Ende des gesamten Prozesses
+
+                                else:
+                                    self.send_command("NEXT_PASS")
+                                    log_message("=> Arduino: 'NEXT_PASS'", "info")
+
+                                    self.reset_move_count()
+                                    self.setup_pass_directory()
+
                             else:
                                 self.send_command("NEXT_MOVE")
-                                log_message("Arduino => 'NEXT_MOVE'", "info")
+                                log_message("=> Arduino: 'NEXT_MOVE'", "info")
+
                 else:
                     log_message("Serielle Verbindung nicht verfügbar!", "error")
                     self.polling_active = False
 
             except Exception as e:
-                log_message(f"Fehler im Polling: {e}", "error")
+                log_message(f"Fehler in der Abfrage: {e}", "error")
                 self.polling_active = False
 
             time.sleep(0.1)
 
-        log_message("Arduino-Polling beendet.", "info")
+        log_message("Arduino-Abfrage beendet.", "info")
 
     # Laufverzeichnis erstellen
     def setup_run_directory(self):
@@ -300,8 +306,10 @@ class CameraSerialManager:
 
         timestamp = time.strftime("%Y%m%d_%H%M%S")
         col_value, row_value = self.get_current_position()
-        filename = f"{timestamp}_WELL_{row_value}{col_value}.jpg"
+        filename = f"{timestamp}_{row_value}{col_value}.jpg"
         filepath = os.path.join(self.CURRENT_PASS_DIR, filename)
+
+        time.sleep(0.1)
 
         try:
             self.picam.capture_file(filepath)

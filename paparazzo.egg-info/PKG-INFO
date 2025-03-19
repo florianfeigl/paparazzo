@@ -1,9 +1,10 @@
 Metadata-Version: 2.2
 Name: paparazzo
-Version: 0.6.3
+Version: 0.7.4
 Summary: Paparazzo Project: Arduino- und Kamera-Integration
 Author: Florian Feigl
 Author-email: florian.feigl@stud.plus.ac.at
+License-File: LICENSE
 Requires-Dist: pyserial
 Requires-Dist: setuptools
 Dynamic: author

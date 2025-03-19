@@ -36,13 +36,15 @@ void loop() {
     for (int run = 0; run < REPEATS; run++) {
         for (int y = 0; y < ROWS; y++) {
             for (int x = 0; x < COLUMNS; x++) {
-                moveToWell(x, y);
+                moveToWell(x, y); // => <MOVE_COMPLETED>
                 waitForNextMoveCommand();
                 handleAbort();
             }
+            // Auf Startposition zurückfahren
             stepper_column.runToNewPosition(0);
+
             if (y < ROWS - 1) {
-                moveToNextColumn(y + 1);
+                moveToNextRow(y + 1);
             }
         }
         returnToHome();
@@ -95,9 +97,9 @@ void moveToWell(int x, int y) {
     sendStatus("MOVE_COMPLETED");
 }
 
-void moveToNextColumn(int y) {
-    Serial.println("↪️ Moving to next column: " + String(y));
-    stepper_column.runToNewPosition(positions_column[y]);
+void moveToNextRow(int y) {
+    Serial.println("↪️ Moving to next row: " + String(y));
+    stepper_row.runToNewPosition(positions_row[y]);
     sendStatus("ROW_COMPLETED");
 }
 
@@ -109,25 +111,32 @@ void returnToHome() {
 }
 
 // === Serielle Kommunikationsfunktionen ===
+
+void waitForSpecificCommand(String expectedCommand) {
+    serialBuffer = "";
+    while (true) {
+        if (Serial.available()) {
+            serialBuffer = Serial.readStringUntil('\n');
+            serialBuffer.trim();
+
+            if (serialBuffer == expectedCommand) {
+                Serial.println("✅ " + expectedCommand + " received.");
+                break;
+            } else {
+                Serial.println("❌ Non-functional input: " + serialBuffer);
+                serialBuffer = "";
+            }
+        }
+    }
+}
+
 void waitForStartCommand() {
     Serial.println("🟢 Waiting for START command...");
-    waitForSpecificCommandWithTimeout("<START>");
+    waitForSpecificCommand("START");
     Serial.println("✅ START received, beginning operation...");
 }
 
-void waitForNextMoveCommand() {
-    Serial.println("Waiting for NEXT_MOVE command...");
-    waitForSpecificCommandWithTimeout("<NEXT_MOVE>", RESPONSE_TIMEOUT);
-    Serial.println("✅ NEXT_MOVE received, beginning operation...");
-}
-
-void waitForNextPassCommand() {
-    Serial.println("Waiting for NEXT_PASS command...");
-    waitForSpecificCommandWithTimeout("<NEXT_PASS>", RESPONSE_TIMEOUT);
-    Serial.println("✅ NEXT_PASS received, beginning operation...");
-}
-
-void waitForSpecificCommandWithTimeout(String expectedCommand, int timeout) {
+void waitForSpecificCommandWithTimeout(String expectedCommand, int timeout = 5000) {
     serialBuffer = "";
     unsigned long startMillis = millis();
 
@@ -149,8 +158,27 @@ void waitForSpecificCommandWithTimeout(String expectedCommand, int timeout) {
     Serial.println("⏰ Timeout waiting for command: " + expectedCommand);
 }
 
+void waitForNextMoveCommand() {
+    Serial.println("Waiting for NEXT_MOVE command...");
+    waitForSpecificCommandWithTimeout("NEXT_MOVE", RESPONSE_TIMEOUT);
+    Serial.println("✅ NEXT_MOVE received, beginning operation...");
+}
+
+void waitForNextPassCommand() {
+    Serial.println("Waiting for NEXT_PASS command...");
+    waitForSpecificCommandWithTimeout("NEXT_PASS", RESPONSE_TIMEOUT);
+    Serial.println("✅ NEXT_PASS received, beginning operation...");
+}
+
+//if (command == "END") {
+//    stopAllMotors();          // stoppt Motoren/Aktoren
+//    resetPositionCounters();  // setzt interne Zähler zurück
+//    digitalWrite(LED_BUILTIN, LOW); // Statusanzeige ausschalten
+//    Serial.println("<ENDED>"); // Optionale Rückmeldung
+//}
+
 void sendStatus(String status) {
-    Serial.println("STATUS: " + status);
+    Serial.println("<" + status + ">");
 }
 
 // === Notfall-Abbruchfunktion ===
@@ -159,8 +187,10 @@ void handleAbort() {
         String command = Serial.readStringUntil('\n');
         command.trim();
         if (command == "ABORT") {
-            Serial.println("🛑 ABORT received! Stopping all operations.");
-            sendStatus("ABORTED");
+            Serial.println("🛑 ABORT received! Returning motors to 0. Stopping all operations.");
+            sendStatus("<ABORTED>");
+            stepper_column.runToNewPosition(0);
+            stepper_row.runToNewPosition(0);
             while (true);
         }
     }

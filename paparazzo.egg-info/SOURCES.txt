@@ -1,3 +1,4 @@
+LICENSE
 README.md
 setup.py
 packages/__init__.py
@@ -6,6 +7,7 @@ packages/check.py
 packages/config.py
 packages/gui.py
 packages/logger.py
+packages/preview.py
 paparazzo.egg-info/PKG-INFO
 paparazzo.egg-info/SOURCES.txt
 paparazzo.egg-info/dependency_links.txt

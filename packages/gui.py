@@ -8,8 +8,8 @@ from tkinter import Toplevel, ttk
 import pkg_resources
 
 from packages.camera_serial_manager import CameraSerialManager
-from packages.logger import (gui_instance, log_message, set_gui_instance,
-                             setup_logging)
+from packages.logger import (gui_instance, log_message, logging,
+                             set_gui_instance, setup_logging)
 
 # Logger zuweisen
 logger = setup_logging()
@@ -71,6 +71,13 @@ class Paparazzo(tk.Tk):
         # Polling für Arduino starten
         self.after(100, self.manager.start_polling)
 
+    # Methode zum Abfragen der Werte:
+    def get_repeats(self):
+        return self.repeats_var.get()
+
+    def get_pause_minutes(self):
+        return self.pause_var.get()
+
     # GUI aufbauen
     def create_widgets(self):
         """Erstellt alle Tkinter-Widgets und legt das Layout fest."""
@@ -87,11 +94,10 @@ class Paparazzo(tk.Tk):
         # Standardwert im Eingabefeld
         self.repeats_var = tk.IntVar(value=2)
 
-        # Wiederholungen Minusbutton
-        minus_repeats = ttk.Button(
-            repeats_frame, text="<", command=self.decrement_repeats, width=7
+        repeats = ttk.Button(
+            repeats_frame, text="<", command=self.open_repeats_popup, width=7
         )
-        minus_repeats.grid(row=0, column=0, padx=10, pady=10, ipadx=14, ipady=14)
+        repeats.grid(row=0, column=0, padx=10, pady=10, ipadx=14, ipady=14)
 
         # Wiederholungen Eingabefeld
         repeats_entry = ttk.Entry(
@@ -232,6 +238,56 @@ class Paparazzo(tk.Tk):
         scrollbar.grid(row=5, column=3, sticky="ns")
         self.log_text["yscrollcommand"] = scrollbar.set
 
+    # =============================================
+    # KONFIGURATIONSPANEL
+    # =============================================
+
+    # Wiederholungen Popup
+    def open_repeats_popup(self):
+        """Öffnet ein kleines Fenster mit Nummernblock zum Einstellen der Wiederholungen."""
+        popup = tk.Toplevel(self)
+        popup.title("Wiederholungen einstellen")
+
+        # Temporäre Variable, um im Popup den Wert zu bearbeiten
+        temp_var = tk.StringVar(value=str(self.repeats_var.get()))
+
+        # Anzeige des aktuellen Eingabestatus im Popup
+        display_label = ttk.Label(popup, textvariable=temp_var, font=("Helvetica", 25))
+        display_label.grid(row=0, column=0, columnspan=3, pady=5)
+
+        def append_digit(digit):
+            """Hängt eine Ziffer an das bestehende Eingabefeld an."""
+            current = temp_var.get()
+            temp_var.set(current + str(digit))
+
+        def clear_value():
+            """Löscht die aktuelle Eingabe."""
+            temp_var.set("")
+
+        def confirm():
+            """Übernimmt den Wert (falls gültig) und schließt das Pop-up."""
+            val = temp_var.get()
+            if val.isdigit():  # Einfache Validierung: nur Ziffern
+                self.repeats_var.set(int(val))
+            popup.destroy()
+
+        # Zifferntasten (1-9, dann 0) in ein Grid einfügen
+        digits = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0]
+        for i, digit in enumerate(digits):
+            row = (i // 3) + 1
+            col = i % 3
+            btn = ttk.Button(
+                popup, text=str(digit), command=lambda d=digit: append_digit(d)
+            )
+            btn.grid(row=row, column=col, padx=5, pady=5, ipadx=10, ipady=10)
+
+        # "C"- und "OK"-Buttons unter den Ziffern
+        c_button = ttk.Button(popup, text="C", command=clear_value)
+        c_button.grid(row=5, column=0, padx=5, pady=5, ipadx=10, ipady=10)
+
+        ok_button = ttk.Button(popup, text="OK", command=confirm)
+        ok_button.grid(row=5, column=2, padx=5, pady=5, ipadx=10, ipady=10)
+
     # Input button functions
     def increment_repeats(self):
         self.repeats_var.set(self.repeats_var.get() + 1)
@@ -258,7 +314,7 @@ class Paparazzo(tk.Tk):
         else:
             log_message("Konfiguration fehlgeschlagen!", "error")
 
-    # Sketch vorbereiten und laden 
+    # Sketch vorbereiten und laden
     def prepare_and_upload_sketch(self):
         """Generiert config.h, kompiliert und lädt den Sketch hoch."""
         REPEATS = self.repeats_var.get()
@@ -362,9 +418,9 @@ class Paparazzo(tk.Tk):
         popup.destroy()
 
     # Programm Schließen
-    def on_close(self):
-        """Sauberes Beenden der GUI und aller verbundenen Prozesse."""
-        log_message("Beende Programm...", "info")
+    def cleanup(self):
+        # Hier alle wichtigen Vorgänge beenden:
+        log_message("Bereinige laufende Vorgänge...")
 
         # 1️⃣ Falls Kamera läuft, stoppen
         if self.manager.picam:
@@ -381,10 +437,17 @@ class Paparazzo(tk.Tk):
         # 3️⃣ Eventuelle Threads oder laufende Funktionen beenden (z. B. `poll_arduino`)
         self.manager.stop_polling()
 
-        # 4️⃣ Tkinter-Fenster sauber schließen
-        log_message("GUI wird zerstört...", "info")
-        set_gui_instance(None)
-        self.destroy()
+    def on_close(self):
+        try:
+            self.cleanup()
+        except Exception as e:
+            print("Fehler beim Herunterfahren:", e)
+        finally:
+            # 4️⃣ Tkinter-Fenster sauber schließen
+            log_message("GUI wird zerstört...", "info")
+            set_gui_instance(None)
+            logging.shutdown()  # Schließt den Logger sauber
+            self.destroy()
 
 
 def main():
