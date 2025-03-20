@@ -8,8 +8,8 @@ from tkinter import Toplevel, ttk
 import pkg_resources
 
 from packages.camera_serial_manager import CameraSerialManager
-from packages.logger import (gui_instance, log_message, logging,
-                             set_gui_instance, setup_logging)
+from packages.logger import (log_message, logging, set_gui_instance,
+                             setup_logging)
 
 # Logger zuweisen
 logger = setup_logging()
@@ -31,45 +31,40 @@ class Paparazzo(tk.Tk):
 
     def __init__(self):
         super().__init__()
-        global gui_instance
 
-        # GUI Titel
+        set_gui_instance(self)
+        self.logger = setup_logging()
+
+        # log_text zuerst erstellen, um log Fehler zu vermeiden
+        self.log_text = tk.Text(self, wrap="word", height=18, width=26)
+        self.log_text.grid(row=5, column=0, columnspan=4, padx=(10, 0), sticky="ew")
+        scrollbar = ttk.Scrollbar(self, command=self.log_text.yview)
+        scrollbar.grid(row=5, column=4, sticky="ns")
+        self.log_text["yscrollcommand"] = scrollbar.set
+
+        self.create_widgets()
+
+        # CameraSerialManager EINMAL initialisieren!
+        self.manager = CameraSerialManager(gui=self)
+
+        # Arduino-Polling starten
+        #self.after(100, self.manager.start_polling)
+
+        # GUI Titel und Style setzen
         version = get_version()
         self.title(f"Paparazzo v{version}")
 
-        # GUI Darstellung
         style = ttk.Style()
-        style.theme_use("clam")  # Alternativ: 'alt', 'default', 'classic'
-        style.configure("CenterEntry.TEntry", padding=(0, 10, 0, 10))
-        style.configure("Repeats.TFrame", background="lightgreen")
-        style.configure("Pause.TFrame", background="yellow")
+        style.theme_use("classic") # 'clam', 'alt', 'default', 'classic'
+        #style.configure("CenterEntry.TEntry", padding=(0, 10, 0, 10))
 
         # Fenster maximiert starten
         w = self.winfo_screenwidth()
         h = self.winfo_screenheight()
         self.geometry(f"{w}x{h}+0+0")
 
-        # 1) Zuerst GUI-Elemente erstellen
-        self.create_widgets()
-
-        # `log_text` Existenzcheck
-        if not hasattr(self, "log_text"):
-            log_message("log_text Widget existiert nicht!", "error")
-            return
-
-        # Manager für Kamera & serielle Schnittstelle
-        set_gui_instance(self)
-
-        # Logger initialisieren
-        self.logger = setup_logging()
         log_message("Starte Paparazzo GUI...", "info")
         log_message("Initialisiere Log System...", "info")
-
-        # Initialisiert und konfiguriert Kamera
-        self.manager = CameraSerialManager()
-
-        # Polling für Arduino starten
-        self.after(100, self.manager.start_polling)
 
     # Methode zum Abfragen der Werte:
     def get_repeats(self):
@@ -78,230 +73,193 @@ class Paparazzo(tk.Tk):
     def get_pause_minutes(self):
         return self.pause_var.get()
 
+    # Counter Value Management
+    def increment_move_count(self):
+        self.MOVE_COUNT += 1
+
+    def reset_move_count(self):
+        self.MOVE_COUNT = 0
+
+    def increment_pass_count(self):
+        self.PASS_COUNT += 1
+
+    def reset_pass_count(self):
+        self.PASS_COUNT = 0
+
+    def get_current_move_count(self):
+        return self.MOVE_COUNT
+
+    def get_current_pass_count(self):
+        return self.PASS_COUNT
+
     # GUI aufbauen
     def create_widgets(self):
         """Erstellt alle Tkinter-Widgets und legt das Layout fest."""
-        # Spaltenanpassung
-        self.columnconfigure(0, weight=1)
-        self.columnconfigure(1, weight=1)
-        self.columnconfigure(2, weight=1)
-
         # LAYOUT
+        button_width = 14
+        font_size = 22
         # Wiederholungen: [<] [Textfeld] [>]
-        repeats_frame = ttk.Frame(self, style="Repeats.TFrame")
-        repeats_frame.grid(row=0, column=0)
+        config_frame = ttk.Frame(self)
+        config_frame.grid(row=0, rowspan=2, column=0, sticky="ew")
 
         # Standardwert im Eingabefeld
         self.repeats_var = tk.IntVar(value=2)
 
-        repeats = ttk.Button(
-            repeats_frame, text="<", command=self.open_repeats_popup, width=7
-        )
-        repeats.grid(row=0, column=0, padx=10, pady=10, ipadx=14, ipady=14)
-
         # Wiederholungen Eingabefeld
-        repeats_entry = ttk.Entry(
-            repeats_frame,
+        config_entry = ttk.Entry(
+            config_frame,
             textvariable=self.repeats_var,
-            width=3,
-            font=("Helvetica", 25),
+            width=5,
+            font=("Helvetica", font_size),
             justify="center",
-            style="CenterEntry.TEntry",
+            #style="CenterEntry.TEntry",
         )
+        config_entry.grid(row=0, column=0, padx=10)
 
-        # Eingabefeld Wiederholungen
-        repeats_entry.grid(row=0, column=1, sticky="ew")
-
-        # Plusknopf Wiederholungen
-        plus_repeats = ttk.Button(
-            repeats_frame, text=">", command=self.increment_repeats, width=7
-        )
-        plus_repeats.grid(row=0, column=2, padx=10, pady=10, ipadx=14, ipady=14)
-
-        # LABEL FRAME
-        label_frame = ttk.Frame(self)
-        label_frame.columnconfigure(0, weight=1)
-        label_frame.columnconfigure(1, weight=1)
-        label_frame.columnconfigure(2, weight=1)
-        label_frame.grid(row=1, column=0, sticky="ew")
-
-        # Wiederholungen Label
-        tk.Label(
-            label_frame,
+        # Knopf Wiederholungen
+        config_repeats = ttk.Button(
+            config_frame,
             text="Wiederholungen",
-            background="lightgreen",
-            font=("Helvetica", 10, "bold"),
-        ).grid(row=0, column=0, ipadx=10, ipady=10)
-
-        # Platzhalterzelle in Zeile 0, Spalte 1 (keine Widgets hier)
-        tk.Label(label_frame, text="").grid(row=0, column=1, sticky="ew")
-
-        # Pausenlabel
-        tk.Label(
-            label_frame,
-            text="Pause [min]",
-            background="yellow",
-            font=("Helvetica", 10, "bold"),
-        ).grid(row=0, column=2, ipadx=10, ipady=10)
-        # Pause (in Minuten): [<] [Textfeld] [>]
-        pause_frame = ttk.Frame(self, style="Pause.TFrame")
-        pause_frame.grid(row=2, column=0)
+            command=self.open_repeats_popup,
+            width=button_width,
+        )
+        config_repeats.grid(row=0, column=1, padx=10, pady=10, ipadx=12, ipady=12)
 
         # Wert im Pause Eingabefeld
         self.pause_var = tk.IntVar(value=1)
 
-        # Minusbutton Pause
-        minus_pause = ttk.Button(
-            pause_frame, text="<", command=self.decrement_pause, width=7
-        )
-        minus_pause.grid(row=0, column=0, padx=10, pady=10, ipadx=14, ipady=14)
-
-        # Eingabefeld Pause
-        pause_entry = ttk.Entry(
-            pause_frame,
+        # Textfeld Pause
+        config_entry = ttk.Entry(
+            config_frame,
             textvariable=self.pause_var,
-            width=3,
-            font=("Helvetica", 24),
+            width=5,
+            font=("Helvetica", 22),
             justify="center",
-            style="CenterEntry.TEntry",
+            #style="CenterEntry.TEntry",
         )
-        pause_entry.grid(row=0, column=1)
+        config_entry.grid(row=1, column=0, padx=10)
 
-        # Plusknopf Pause
-        plus_pause = ttk.Button(
-            pause_frame, text=">", command=self.increment_pause, width=7
+        # Eingabeknopf Pause
+        config_pause = ttk.Button(
+            config_frame,
+            text="Pause [min]",
+            command=self.open_pause_popup,
+            width=button_width,
         )
-        plus_pause.grid(row=0, column=2, padx=10, ipadx=14, ipady=14)
+        config_pause.grid(row=1, column=1, padx=10, pady=10, ipadx=12, ipady=12)
 
         # Execution Elements
         execution_frame = ttk.Frame(self)
-        execution_frame.grid(row=0, rowspan=3, column=1)
+        execution_frame.grid(row=0, rowspan=2, column=1, sticky="ew")
 
         # Generieren & Hochladen
         gen_upload_btn = ttk.Button(
             execution_frame,
-            text="Konfigurieren",
+            text="Programm laden",
             command=self.on_configure,
-            width=16,
+            width=button_width,
         )
-        gen_upload_btn.grid(row=0, column=1, padx=10, ipadx=12, ipady=12)
+        gen_upload_btn.grid(row=0, column=0, padx=10, pady=10, ipadx=12, ipady=12)
+
+        # Manuellzugriff
+        position_button = ttk.Button(
+            execution_frame,
+            text="Manuelle Steuerung",
+            command=self.on_open_manual_position_popup,
+            width=button_width,
+        )
+        position_button.grid(row=1, column=0, padx=10, pady=10, ipadx=12, ipady=12)
+
+        # Run Options Elements
+        runoptions_frame = ttk.Frame(self)
+        runoptions_frame.grid(row=0, rowspan=2, column=2, sticky="ew")
 
         # Programm START
         start_btn = ttk.Button(
-            execution_frame,
+            runoptions_frame,
             text="Starten",
             command=self.on_start_program,
-            width=16,
+            width=button_width,
         )
-        start_btn.grid(row=1, column=1, padx=10, pady=10, ipadx=12, ipady=12)
+        start_btn.grid(row=0, column=0, padx=10, pady=10, ipadx=12, ipady=12)
 
         # Abbrechen
         abort_btn = ttk.Button(
-            execution_frame, text="Abbrechen", command=self.on_abort, width=16
+            runoptions_frame, text="Abbrechen", command=self.on_abort, width=button_width
         )
-        abort_btn.grid(row=2, column=1, padx=10, ipadx=14, ipady=14)
+        abort_btn.grid(row=1, column=0, padx=10, pady=10, ipadx=12, ipady=12)
 
         # System Elements
-        administration_frame = ttk.Frame(self)
-        administration_frame.grid(row=0, rowspan=3, column=2)
-
-        # Positionieren
-        position_button = ttk.Button(
-            administration_frame,
-            text="Positionieren",
-            command=self.on_open_manual_position_popup,
-            width=16,
-        )
-        position_button.grid(row=0, column=2, padx=10, ipadx=12, ipady=12)
-
-        # Fotografieren
-        photo_button = ttk.Button(
-            administration_frame,
-            text="Fotografieren",
-            command=self.on_take_photo,
-            width=16,
-        )
-        photo_button.grid(row=1, column=2, padx=10, pady=10, ipadx=12, ipady=12)
+        system_frame = ttk.Frame(self)
+        system_frame.grid(row=0, column=3, sticky="ew")
 
         # Schließen
         close_button = ttk.Button(
-            administration_frame, text="Schließen", command=self.on_close, width=16
+            system_frame, text="Schließen", command=self.on_close, width=button_width
         )
-        close_button.grid(row=2, column=2, padx=10, ipadx=12, ipady=12)
-
-        # Log-Text-Widget initialisieren
-        self.log_text = tk.Text(self, wrap="word", height=14, width=20)
-        self.log_text.grid(row=5, column=0, columnspan=3, padx=(10, 0), sticky="ew")
-
-        # Scrollbar für das Log-Text-Widget
-        scrollbar = ttk.Scrollbar(self, command=self.log_text.yview)
-        scrollbar.grid(row=5, column=3, sticky="ns")
-        self.log_text["yscrollcommand"] = scrollbar.set
+        close_button.grid(row=0, column=0, padx=10, pady=10, ipadx=12, ipady=12)
 
     # =============================================
-    # KONFIGURATIONSPANEL
+    # Popup Elemente
     # =============================================
 
-    # Wiederholungen Popup
+    # Konfigurationseingaben
     def open_repeats_popup(self):
-        """Öffnet ein kleines Fenster mit Nummernblock zum Einstellen der Wiederholungen."""
+        self.open_numpad_popup(self.repeats_var, "Wiederholungen")
+
+    def open_pause_popup(self):
+        self.open_numpad_popup(self.pause_var, "Pause [min]")
+
+    # Numpad Aktionen
+    def open_numpad_popup(self, variable: tk.IntVar, title: str):
         popup = tk.Toplevel(self)
-        popup.title("Wiederholungen einstellen")
+        popup.title(title)
 
-        # Temporäre Variable, um im Popup den Wert zu bearbeiten
-        temp_var = tk.StringVar(value=str(self.repeats_var.get()))
+        temp_var = tk.StringVar(value=str(variable.get()))
+        entry = ttk.Entry(
+            popup, textvariable=temp_var, font=("Helvetica", 25), justify="center"
+        )
+        entry.grid(row=0, column=0, columnspan=3, pady=10)
 
-        # Anzeige des aktuellen Eingabestatus im Popup
-        display_label = ttk.Label(popup, textvariable=temp_var, font=("Helvetica", 25))
-        display_label.grid(row=0, column=0, columnspan=3, pady=5)
-
-        def append_digit(digit):
-            """Hängt eine Ziffer an das bestehende Eingabefeld an."""
+        def numpad_append(digit):
             current = temp_var.get()
             temp_var.set(current + str(digit))
 
         def clear_value():
-            """Löscht die aktuelle Eingabe."""
             temp_var.set("")
 
         def confirm():
-            """Übernimmt den Wert (falls gültig) und schließt das Pop-up."""
             val = temp_var.get()
-            if val.isdigit():  # Einfache Validierung: nur Ziffern
-                self.repeats_var.set(int(val))
-            popup.destroy()
+            if val.isdigit() and int(val) > 0:
+                variable.set(int(val))
+                log_message(f"{title} gesetzt auf {val}", "info")
+                popup.destroy()
+            else:
+                log_message(f"Ungültige Eingabe für {title}!", "error")
 
-        # Zifferntasten (1-9, dann 0) in ein Grid einfügen
-        digits = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0]
-        for i, digit in enumerate(digits):
-            row = (i // 3) + 1
-            col = i % 3
+        # Numpad (Ziffern 1–9)
+        digits = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+        for idx, digit in enumerate(digits):
             btn = ttk.Button(
-                popup, text=str(digit), command=lambda d=digit: append_digit(d)
+                popup,
+                text=str(digit),
+                command=lambda d=digit: temp_var.set(temp_var.get() + str(d)),
             )
-            btn.grid(row=row, column=col, padx=5, pady=5, ipadx=10, ipady=10)
+            btn.grid(
+                row=(idx // 3) + 1, column=(idx % 3), padx=5, pady=5, ipadx=10, ipady=10
+            )
 
-        # "C"- und "OK"-Buttons unter den Ziffern
-        c_button = ttk.Button(popup, text="C", command=clear_value)
-        c_button.grid(row=5, column=0, padx=5, pady=5, ipadx=10, ipady=10)
+        # Letzte Reihe mit C - 0 - OK
+        clear_btn = ttk.Button(popup, text="C", command=lambda: temp_var.set(""))
+        clear_btn.grid(row=4, column=0, padx=5, pady=5, ipadx=10, ipady=10)
 
-        ok_button = ttk.Button(popup, text="OK", command=confirm)
-        ok_button.grid(row=5, column=2, padx=5, pady=5, ipadx=10, ipady=10)
+        zero_btn = ttk.Button(
+            popup, text="0", command=lambda: temp_var.set(temp_var.get() + "0")
+        )
+        zero_btn.grid(row=4, column=1, padx=5, pady=5, ipadx=10, ipady=10)
 
-    # Input button functions
-    def increment_repeats(self):
-        self.repeats_var.set(self.repeats_var.get() + 1)
-
-    def decrement_repeats(self):
-        if self.repeats_var.get() > 1:
-            self.repeats_var.set(self.repeats_var.get() - 1)
-
-    def increment_pause(self):
-        self.pause_var.set(self.pause_var.get() + 1)
-
-    def decrement_pause(self):
-        if self.pause_var.get() > 1:
-            self.pause_var.set(self.pause_var.get() - 1)
+        ok_btn = ttk.Button(popup, text="OK", command=confirm)
+        ok_btn.grid(row=4, column=2, padx=5, pady=5, ipadx=10, ipady=10)
 
     # Konfigurieren
     def on_configure(self):
@@ -357,16 +315,19 @@ class Paparazzo(tk.Tk):
         log_message("Sende 'START' an Arduino...", "info")
         self.manager.send_command("START")
 
+        self.manager.start_polling()
+
     # Abbrechen
     def on_abort(self):
         """Button-Klick: Sende 'ABORT' an Arduino, der daraufhin abbrechen soll."""
         log_message("Sende 'ABORT' an Arduino...", "info")
         self.manager.send_command("ABORT")
+        self.manager.stop_polling()
 
     # Manuelles Positionieren
     def manual_move_to_position(self, row, col):
-        print(f"Moving to position {row}{col}")
-        # Hier Steuerungsbefehl für die Bewegung einfügen
+        command = f"MOVE_{row}{col}"
+        self.manager.send_command(command)
 
     def on_open_manual_position_popup(self):
         popup = Toplevel(self)
@@ -400,11 +361,11 @@ class Paparazzo(tk.Tk):
 
         row_value, col_value = "X", "X"  # Hier Werte von der aktuellen Position holen
 
-        dir_path = f"Paparazzo/images/manual_{date_str}/"
+        dir_path = f"images/manual_{date_str}/"
         os.makedirs(dir_path, exist_ok=True)
-        file_path = os.path.join(
-            dir_path, f"{time_str}_{row_value}{col_value}_manual_shot.jpg"
-        )
+        file_path = os.path.join(dir_path, f"{time_str}_{row_value}{col_value}.jpg")
+
+        self.manager.take_photo()
 
         print(f"Foto gespeichert unter: {file_path}")
         # Hier Kamera-Befehl zum Speichern des Bildes einfügen

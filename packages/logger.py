@@ -10,29 +10,36 @@ from packages.config import LOGS_DIR
 gui_instance = None
 logger = None  # Globale Logger-Variable
 
-
+# TextWidgetHandler
 class TextWidgetHandler(logging.Handler):
-    """
-    Leitet alle Log-Ausgaben ins Text-Widget (falls es existiert).
-    Falls das GUI noch nicht läuft, werden die Meldungen auf der Konsole ausgegeben.
-    """
-
     def emit(self, record):
-        if record.levelno < logging.INFO:  
+        if record.levelno < logging.INFO:
             return
 
         msg = self.format(record)
-        if (
-            gui_instance
-            and hasattr(gui_instance, "log_text")
-            and gui_instance.log_text.winfo_exists()
-        ):
-            gui_instance.log_text.insert("end", msg + "\n")
-            gui_instance.log_text.see("end")
-            gui_instance.after(100, gui_instance.log_text.update_idletasks)
+
+        if gui_instance and hasattr(gui_instance, "log_text"):
+            try:
+                # Prüfe ob Widget noch existiert (noch nicht zerstört)
+                if gui_instance.log_text.winfo_exists():
+                    gui_instance.after(0, self.safe_insert, msg)
+                else:
+                    print("GUI log_text widget existiert nicht mehr.")
+                    print(msg)
+            except Exception as e:
+                print(f"Fehler beim Logging-Handler (Widget existiert nicht mehr): {e}")
+                print(msg)
         else:
-            # Falls keine GUI vorhanden ist, sende an das Terminal
+            # Kein GUI verfügbar, daher Terminal-Ausgabe
             print(msg)
+
+    def safe_insert(self, msg):
+        if gui_instance is not None:
+            try:
+                gui_instance.log_text.insert("end", msg + "\n")
+                gui_instance.log_text.see("end")
+            except Exception as e:
+                print(f"Fehler beim Einfügen ins GUI-Log: {e}")
 
 
 def setup_logging():

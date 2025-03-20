@@ -3,6 +3,9 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
+// Serielle Kommunikation
+#define SERIAL_BAUD 9600
+
 // Pin Konfiguration
 #define STEP_PIN_COLUMN 12
 #define DIR_PIN_COLUMN 13
@@ -14,7 +17,10 @@
 // Motorbewegung
 #define MAX_SPEED 8000
 #define ACCEL 3200
-#define STEPS_PER_REV 3200
+#define STEPS_BASE_VALUE 200
+#define MICROSTEPS_PER_STEP 16
+#define DISTANCE_COLS 1.2
+#define DISTANCE_ROWS 0.24
 
 #define COLUMNS 6
 #define ROWS 4

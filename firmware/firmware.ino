@@ -1,6 +1,14 @@
 #include "config.h"
 #include <AccelStepper.h>
 
+// === Funktionsprototypen ===
+void waitForNextMoveCommand();
+void waitForNextPassCommand();
+void handleTimeout();
+void resetSystemState();
+void stopAllMotors();
+void sendStatus(String status);
+
 // === AccelStepper-Objekte ===
 AccelStepper stepper_column(AccelStepper::DRIVER, STEP_PIN_COLUMN, DIR_PIN_COLUMN);
 AccelStepper stepper_row(AccelStepper::DRIVER, STEP_PIN_ROW, DIR_PIN_ROW);
@@ -18,6 +26,11 @@ const long distance_rows = DISTANCE_ROWS * steps_per_revolution;
 long positions_column[COLUMNS];
 long positions_row[ROWS];
 
+// === System Variablen ===
+int currentPass = 0;
+int currentRow = 0;
+int currentColumn = 0;
+
 // === Serielle Kommunikation ===
 String serialBuffer = "";
 
@@ -34,30 +47,24 @@ void setup() {
 
 void loop() {
     for (int run = 0; run < REPEATS; run++) {
-        for (int y = 0; y < ROWS; y++) {
-            for (int x = 0; x < COLUMNS; x++) {
-                moveToWell(x, y); // => <MOVE_COMPLETED>
+        for (int currentRow = 0; currentRow < ROWS; currentRow++) {
+            for (int currentColumn = 0; currentColumn < COLUMNS; currentColumn++) {
+                // Reihe entlang der Spalten fahren
+                moveToNextColumn(currentColumn, currentRow); // => <MOVE_COMPLETED>
                 waitForNextMoveCommand();
-                handleAbort();
             }
-            // Auf Startposition zurückfahren
+            // 
             stepper_column.runToNewPosition(0);
-
-            if (y < ROWS - 1) {
-                moveToNextRow(y + 1);
+            if (currentRow < ROWS - 1) {
+                moveToNextRow(currentRow + 1);
             }
         }
         returnToHome();
-
-        sendStatus("PASS_COMPLETED");
         waitForNextPassCommand();
-        handleAbort();
 
         Serial.println("✅ Run " + String(run + 1) + " finished. Pausing for " + String(PAUSE_MS) + " ms.");
         delay(PAUSE_MS);
     }
-
-    sendStatus("DONE");
     Serial.println("✅ ALL runs completed. Halting execution.");
     while (true);
 }
@@ -91,15 +98,15 @@ void setupPins() {
 }
 
 // === Bewegungsfunktionen ===
-void moveToWell(int x, int y) {
-    Serial.println("➡️ Moving to well [Column: " + String(x) + ", Row: " + String(y) + "]");
-    stepper_column.runToNewPosition(positions_column[x]);
+void moveToNextColumn(int currentColumn, int currentRow) {
+    Serial.println("Moving to column: " + String(currentColumn) + "/" + String(currentRow));
+    stepper_column.runToNewPosition(positions_column[currentColumn]);
     sendStatus("MOVE_COMPLETED");
 }
 
-void moveToNextRow(int y) {
-    Serial.println("↪️ Moving to next row: " + String(y));
-    stepper_row.runToNewPosition(positions_row[y]);
+void moveToNextRow(int currentRow) {
+    Serial.println("Moving to row: " + String(currentRow));
+    stepper_row.runToNewPosition(positions_row[currentRow]);
     sendStatus("ROW_COMPLETED");
 }
 
@@ -111,16 +118,15 @@ void returnToHome() {
 }
 
 // === Serielle Kommunikationsfunktionen ===
-
-void waitForSpecificCommand(String expectedCommand) {
+void waitForStartCommand() {
     serialBuffer = "";
     while (true) {
         if (Serial.available()) {
             serialBuffer = Serial.readStringUntil('\n');
             serialBuffer.trim();
 
-            if (serialBuffer == expectedCommand) {
-                Serial.println("✅ " + expectedCommand + " received.");
+            if (serialBuffer == "START") {
+                Serial.println("✅ Command 'START' received.");
                 break;
             } else {
                 Serial.println("❌ Non-functional input: " + serialBuffer);
@@ -130,68 +136,92 @@ void waitForSpecificCommand(String expectedCommand) {
     }
 }
 
-void waitForStartCommand() {
-    Serial.println("🟢 Waiting for START command...");
-    waitForSpecificCommand("START");
-    Serial.println("✅ START received, beginning operation...");
-}
-
-void waitForSpecificCommandWithTimeout(String expectedCommand, int timeout = 5000) {
+void waitForNextMoveCommand() {
     serialBuffer = "";
     unsigned long startMillis = millis();
 
-    while (millis() - startMillis < timeout) {
+    while (millis() - startMillis < RESPONSE_TIMEOUT) {
         if (Serial.available()) {
             serialBuffer = Serial.readStringUntil('\n');
             serialBuffer.trim();
 
-            if (serialBuffer == expectedCommand) {
-                Serial.println("✅ " + expectedCommand + " received.");
+            if (serialBuffer == "NEXT_MOVE") {
+                Serial.println("✅ Command NEXT_MOVE received.");
+                return;  
+            } else if (serialBuffer == "ABORT") {
+                Serial.println("🛑 ABORT received! Shutting down.");
+                returnToHome();
+                stopAllMotors();
+                resetSystemState();
+                sendStatus("ABORTED");
                 return;
             } else {
                 Serial.println("❌ Non-functional input: " + serialBuffer);
                 serialBuffer = "";  // Zurücksetzen, um falsche Werte zu vermeiden
+                handleTimeout();
             }
         }
     }
-
-    Serial.println("⏰ Timeout waiting for command: " + expectedCommand);
-}
-
-void waitForNextMoveCommand() {
-    Serial.println("Waiting for NEXT_MOVE command...");
-    waitForSpecificCommandWithTimeout("NEXT_MOVE", RESPONSE_TIMEOUT);
-    Serial.println("✅ NEXT_MOVE received, beginning operation...");
 }
 
 void waitForNextPassCommand() {
-    Serial.println("Waiting for NEXT_PASS command...");
-    waitForSpecificCommandWithTimeout("NEXT_PASS", RESPONSE_TIMEOUT);
-    Serial.println("✅ NEXT_PASS received, beginning operation...");
-}
+    sendStatus("PASS_COMPLETED");
 
-//if (command == "END") {
-//    stopAllMotors();          // stoppt Motoren/Aktoren
-//    resetPositionCounters();  // setzt interne Zähler zurück
-//    digitalWrite(LED_BUILTIN, LOW); // Statusanzeige ausschalten
-//    Serial.println("<ENDED>"); // Optionale Rückmeldung
-//}
+    serialBuffer = "";
+    unsigned long startMillis = millis();
 
-void sendStatus(String status) {
-    Serial.println("<" + status + ">");
-}
+    while (millis() - startMillis < RESPONSE_TIMEOUT) {
+        if (Serial.available()) {
+            serialBuffer = Serial.readStringUntil('\n');
+            serialBuffer.trim();
 
-// === Notfall-Abbruchfunktion ===
-void handleAbort() {
-    if (Serial.available()) {
-        String command = Serial.readStringUntil('\n');
-        command.trim();
-        if (command == "ABORT") {
-            Serial.println("🛑 ABORT received! Returning motors to 0. Stopping all operations.");
-            sendStatus("<ABORTED>");
-            stepper_column.runToNewPosition(0);
-            stepper_row.runToNewPosition(0);
-            while (true);
+            if (serialBuffer == "NEXT_PASS") {
+                Serial.println("✅ Command 'NEXT_PASS' received.");
+                return;  
+            } else if (serialBuffer == "ABORT") {
+                Serial.println("🛑 ABORT received! Shutting down.");
+                returnToHome();
+                stopAllMotors();
+                resetSystemState();
+                sendStatus("ABORTED");
+                return;
+            } else if (serialBuffer == "END") {
+                stopAllMotors();          
+                resetSystemState(); 
+                sendStatus("ENDED"); 
+                return;
+            } else {
+                Serial.println("❌ Non-functional input: " + serialBuffer);
+                serialBuffer = "";  // Zurücksetzen, um falsche Werte zu vermeiden
+                handleTimeout();
+            }
         }
     }
+}
+
+// === Helper ===
+void resetSystemState() {
+    currentRow = 0;
+    currentColumn = 0;
+    currentPass = 0;
+    Serial.println("✅ Systemzustand zurückgesetzt.");
+}
+
+void stopAllMotors() {
+    stepper_column.stop();
+    stepper_row.stop();
+    digitalWrite(enable_stepper_rows, HIGH);
+    digitalWrite(enable_stepper_columns, HIGH);
+}
+
+void handleTimeout() {
+    Serial.println("⏰ TIMEOUT! Returning motors to home position and resetting system state.");
+    returnToHome();
+    stopAllMotors();
+    resetSystemState();
+    sendStatus("TIMEOUT");
+    return;
+}
+void sendStatus(String status) {
+    Serial.println("<" + status + ">");
 }

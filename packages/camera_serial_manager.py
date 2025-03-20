@@ -30,6 +30,22 @@ class CameraSerialManager:
         self.init_serial()
 
     # Counter Value Managment
+    def get_repeats(self):
+        if self.gui is None:
+            log_message(
+                "Keine GUI-Referenz vorhanden, nutze Standardwert REPEATS=2", "warning"
+            )
+            return 2
+        return self.gui.get_repeats()
+
+    def get_pause_minutes(self):
+        if self.gui is None:
+            log_message(
+                "Keine GUI-Referenz vorhanden, nutze Standardwert PAUSE=1", "warning"
+            )
+            return 2
+        return self.gui.get_pause_minutes()
+
     def increment_move_count(self):
         self.MOVE_COUNT += 1
 
@@ -102,35 +118,32 @@ class CameraSerialManager:
         if self.serial_connection and self.serial_connection.is_open:
             self.serial_connection.write((command + "\n").encode("utf-8"))
             self.serial_connection.flush()
-            log_message(f"=> Arduino: {command}")
+            log_message(
+                f"=> Arduino: '{command}'"
+            )  # EINHEITLICH MIT Anführungszeichen!
         else:
             log_message("Serielle Verbindung nicht verfügbar!", "error")
 
     # Konfigurationsdatei generieren
-    def generate_config_file(self, REPEATS, PAUSE):
-        """
-        Liest config_template.h, ersetzt Platzhalter und schreibt config.h.
-        """
-        if self.gui is not None:
-            repeats = self.gui.repeats_var.get()
-            pause = self.gui.pause_var.get() * 60000  # Umrechnung Minuten auf ms
-            log_message(f"Generiere config.h mit repeats={repeats}, pause={pause}ms", "info")
-            try:
-                with open(TEMPLATE_FILE, "r") as template:
-                    content = template.read()
+    def generate_config_file(self, repeats, pause_ms):
+        log_message(
+            f"Generiere config.h mit repeats={repeats}, pause={pause_ms}ms", "info"
+        )
+        try:
+            with open(TEMPLATE_FILE, "r") as template:
+                content = template.read()
 
-                # Platzhalter ersetzen
-                content = content.replace("{{REPEATS_PLACEHOLDER}}", str(REPEATS))
-                content = content.replace("{{PAUSE_PLACEHOLDER}}", str(PAUSE))
+            # ACHTUNG: hier exakt diese Parameter verwenden!
+            content = content.replace("{{REPEATS_PLACEHOLDER}}", str(repeats))
+            content = content.replace("{{PAUSE_PLACEHOLDER}}", str(pause_ms))
 
-                # Neue config.h schreiben
-                with open(CONFIG_FILE, "w") as config:
-                    config.write(content)
+            with open(CONFIG_FILE, "w") as config:
+                config.write(content)
 
-                log_message("config.h wurde erfolgreich generiert.")
+            log_message("config.h wurde erfolgreich generiert.")
 
-            except FileNotFoundError:
-                log_message(f"FEHLER: {TEMPLATE_FILE} wurde nicht gefunden.", "error")
+        except FileNotFoundError:
+            log_message(f"FEHLER: {TEMPLATE_FILE} wurde nicht gefunden.", "error")
 
     # Arduino Sketch kompilieren
     def compile_sketch(self):
@@ -169,10 +182,10 @@ class CameraSerialManager:
     def start_polling(self):
         """Startet Polling in eigenem Thread, falls noch nicht aktiv."""
         if self.polling_thread and self.polling_thread.is_alive():
-            log_message("Polling-Thread läuft bereits!", "warning")
+            log_message("Abfrage-Thread läuft bereits!", "warning")
             return
 
-        log_message("Starte Arduino-Polling-Thread...", "info")
+        log_message("Starte Daten-Abfrage-Thread...", "info")
         self.polling_active = True
         self.polling_thread = threading.Thread(target=self.poll_arduino, daemon=True)
         self.polling_thread.start()
@@ -180,7 +193,7 @@ class CameraSerialManager:
     # Polling Stop Helper
     def stop_polling(self):
         """Stoppt den Polling-Thread sicher und wartet auf dessen Ende."""
-        log_message("Beende Arduino-Polling-Thread...", "info")
+        log_message("Beende Daten-Abfrage-Thread...", "info")
         self.polling_active = False
 
         if (
@@ -190,18 +203,9 @@ class CameraSerialManager:
             self.polling_thread.join(timeout=2)
             self.polling_thread = None
 
-    # Restart Polling
-    def restart_polling_thread(self):
-        """Thread sicher beenden und nach Pause neu starten."""
-        log_message("Starte Polling nach kurzer Wartezeit neu...", "info")
-        self.polling_active = False  # Stoppt und räumt aktuellen Thread sauber auf
-        time.sleep(1)
-        self.start_polling()  # Erstellt und startet neuen Polling-Thread
-
     # Polling
     def poll_arduino(self):
-        """Pollt den Arduino in einem separaten Thread."""
-        log_message("Arduino-Abfrage gestartet.", "info")
+        log_message("Daten-Abfrage gestartet.", "info")
         self.polling_active = True
 
         while self.polling_active:
@@ -214,47 +218,62 @@ class CameraSerialManager:
                             .strip()
                         )
 
-                        if not raw_line.startswith("<") or not raw_line.endswith(">"):
+                        if (
+                            raw_line.startswith("<")
+                            and raw_line.endswith(">")
+                            and len(raw_line) > 2
+                        ):
+                            command = raw_line[1:-1].strip()
+                        else:
                             continue
-
-                        command = raw_line[1:-1]
 
                         if command == "MOVE_COMPLETED":
                             log_message("<= Raspberry: 'MOVE_COMPLETED'", "info")
                             self.take_photo()
-                            self.increment_move_count()
 
-                            if self.get_current_move_count() >= TOTAL_STATIONS:
-                                self.increment_pass_count()
-
-                                if self.gui.get_repeats() <= self.get_current_pass_count():
-                                    log_message(f"Alle Läufe ({self.get_current_pass_count():02d}) abgeschlossen.", "info")
-                                    self.send_command("END")
-                                    self.polling_active = False
-                                    break  # Ende des gesamten Prozesses
-
-                                else:
-                                    self.send_command("NEXT_PASS")
-                                    log_message("=> Arduino: 'NEXT_PASS'", "info")
-
-                                    self.reset_move_count()
-                                    self.setup_pass_directory()
-
+                            if self.get_current_move_count() + 1 >= TOTAL_STATIONS:
+                                # Warte nun explizit auf <PASS_COMPLETED> vom Arduino
+                                log_message(
+                                    "Alle Positionen erreicht, warte auf PASS_COMPLETED.",
+                                    "info",
+                                )
                             else:
+                                self.increment_move_count()
                                 self.send_command("NEXT_MOVE")
-                                log_message("=> Arduino: 'NEXT_MOVE'", "info")
 
+                        elif command == "PASS_COMPLETED":
+                            log_message("Arduino meldet PASS_COMPLETED.", "info")
+                            log_message(f"Pausiere {self.get_pause_minutes()} Minuten bis zum nächsten Lauf.", "info")
+                            self.increment_pass_count()
+
+                            if self.get_current_pass_count() >= self.get_repeats():
+                                log_message(f"Alle Läufe ({self.get_repeats()}) abgeschlossen.", "info")
+                                self.send_command("END")
+                                self.polling_active = False
+                                break
+                            else:
+                                self.reset_move_count()
+                                self.setup_pass_directory()
+                                self.send_command("NEXT_PASS")
+
+                        elif command == "ABORTED":
+                            log_message("Daten-Abbruch bestätigt (ABORTED).", "info")
+                            self.polling_active = False
+                            break
+
+                        elif command == "TIMEOUT":
+                            log_message("Arduino hat TIMEOUT gemeldet!", "error")
+                            self.polling_active = False
+                            break
                 else:
                     log_message("Serielle Verbindung nicht verfügbar!", "error")
                     self.polling_active = False
 
             except Exception as e:
-                log_message(f"Fehler in der Abfrage: {e}", "error")
+                log_message(f"Fehler im Polling: {e}", "error")
                 self.polling_active = False
 
-            time.sleep(0.1)
-
-        log_message("Arduino-Abfrage beendet.", "info")
+        log_message("Daten-Abfrage beendet.", "info")
 
     # Laufverzeichnis erstellen
     def setup_run_directory(self):
@@ -292,6 +311,8 @@ class CameraSerialManager:
             log_message("🚨 Kamera nicht initialisiert!", "error")
             return
 
+        time.sleep(0.1)
+
         sensor_size = self.picam.sensor_resolution
         width, height = sensor_size
 
@@ -308,8 +329,6 @@ class CameraSerialManager:
         col_value, row_value = self.get_current_position()
         filename = f"{timestamp}_{row_value}{col_value}.jpg"
         filepath = os.path.join(self.CURRENT_PASS_DIR, filename)
-
-        time.sleep(0.1)
 
         try:
             self.picam.capture_file(filepath)
