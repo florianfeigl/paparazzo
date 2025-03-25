@@ -43,7 +43,7 @@ class CameraSerialManager:
             log_message(
                 "Keine GUI-Referenz vorhanden, nutze Standardwert PAUSE=1", "warning"
             )
-            return 2
+            return 1
         return self.gui.get_pause_minutes()
 
     def increment_move_count(self):
@@ -118,16 +118,14 @@ class CameraSerialManager:
         if self.serial_connection and self.serial_connection.is_open:
             self.serial_connection.write((command + "\n").encode("utf-8"))
             self.serial_connection.flush()
-            log_message(
-                f"=> Arduino: '{command}'"
-            )  # EINHEITLICH MIT Anführungszeichen!
+            log_message(f"=> Arduino: '{command}'")
         else:
             log_message("Serielle Verbindung nicht verfügbar!", "error")
 
     # Konfigurationsdatei generieren
     def generate_config_file(self, repeats, pause_ms):
         log_message(
-            f"Generiere config.h mit repeats={repeats}, pause={pause_ms}ms", "info"
+            f"Generiere config.h mit REPEATS={repeats}, PAUSE={pause_ms}ms", "info"
         )
         try:
             with open(TEMPLATE_FILE, "r") as template:
@@ -232,7 +230,7 @@ class CameraSerialManager:
                             self.take_photo()
 
                             if self.get_current_move_count() + 1 >= TOTAL_STATIONS:
-                                # Warte nun explizit auf <PASS_COMPLETED> vom Arduino
+                                # Warte auf <PASS_COMPLETED> vom Arduino
                                 log_message(
                                     "Alle Positionen erreicht, warte auf PASS_COMPLETED.",
                                     "info",
@@ -243,11 +241,18 @@ class CameraSerialManager:
 
                         elif command == "PASS_COMPLETED":
                             log_message("Arduino meldet PASS_COMPLETED.", "info")
-                            log_message(f"Pausiere {self.get_pause_minutes()} Minuten bis zum nächsten Lauf.", "info")
+                            log_message(
+                                f"Pausiere {self.get_pause_minutes()} Minuten bis zum nächsten Lauf.",
+                                "info",
+                            )
                             self.increment_pass_count()
 
                             if self.get_current_pass_count() >= self.get_repeats():
-                                log_message(f"Alle Läufe ({self.get_repeats()}) abgeschlossen.", "info")
+                                log_message(
+                                    f"Alle Läufe ({self.get_repeats()}) abgeschlossen.",
+                                    "info",
+                                )
+                                log_message("Beende Arduino", "info")
                                 self.send_command("END")
                                 self.polling_active = False
                                 break
@@ -311,8 +316,6 @@ class CameraSerialManager:
             log_message("🚨 Kamera nicht initialisiert!", "error")
             return
 
-        time.sleep(0.1)
-
         sensor_size = self.picam.sensor_resolution
         width, height = sensor_size
 
@@ -329,6 +332,8 @@ class CameraSerialManager:
         col_value, row_value = self.get_current_position()
         filename = f"{timestamp}_{row_value}{col_value}.jpg"
         filepath = os.path.join(self.CURRENT_PASS_DIR, filename)
+
+        time.sleep(0.2)
 
         try:
             self.picam.capture_file(filepath)

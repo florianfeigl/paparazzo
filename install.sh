@@ -6,8 +6,9 @@ sudo apt install libcap-dev libatlas-base-dev ffmpeg libopenjp2-7
 sudo apt install libcamera-dev
 sudo apt install libkms++-dev libfmt-dev libdrm-dev
 sudo apt install arduino
-sudo apt install onboard at-spi2-core
+sudo apt install i2c-tools
 arduino-cli lib install "AccelStepper"
+arduino-cli lib install "RTClib"
 
 # Variables
 WORK_DIR = $USER/Paparazzo

@@ -36,27 +36,33 @@ class Paparazzo(tk.Tk):
         self.logger = setup_logging()
 
         # log_text zuerst erstellen, um log Fehler zu vermeiden
-        self.log_text = tk.Text(self, wrap="word", height=18, width=26)
-        self.log_text.grid(row=5, column=0, columnspan=4, padx=(10, 0), sticky="ew")
+        self.log_text = tk.Text(self, wrap="word", height=17, width=30)
+        self.log_text.grid(row=5, column=0, columnspan=4, padx=10, sticky="nsew")
         scrollbar = ttk.Scrollbar(self, command=self.log_text.yview)
-        scrollbar.grid(row=5, column=4, sticky="ns")
+        scrollbar.grid(row=5, column=4, padx=(0, 10), sticky="ns")
         self.log_text["yscrollcommand"] = scrollbar.set
+
+        # Spaltenkonfiguration
+        self.columnconfigure(0, weight=1)
+        self.columnconfigure(1, weight=1)
+        self.columnconfigure(2, weight=1)
+        self.columnconfigure(3, weight=1)
+        self.columnconfigure(4, weight=0)
 
         self.create_widgets()
 
         # CameraSerialManager EINMAL initialisieren!
         self.manager = CameraSerialManager(gui=self)
 
-        # Arduino-Polling starten
-        #self.after(100, self.manager.start_polling)
-
         # GUI Titel und Style setzen
         version = get_version()
         self.title(f"Paparazzo v{version}")
 
+        # Style Options
         style = ttk.Style()
-        style.theme_use("classic") # 'clam', 'alt', 'default', 'classic'
-        #style.configure("CenterEntry.TEntry", padding=(0, 10, 0, 10))
+        style.theme_use("clam")  # 'clam', 'alt', 'default', 'classic'
+        style.configure("CenterEntry.TEntry", padding=(0, 10, 0, 10))
+        style.configure("Custom.Vertical.TScrollbar", width=20)
 
         # Fenster maximiert starten
         w = self.winfo_screenwidth()
@@ -112,7 +118,7 @@ class Paparazzo(tk.Tk):
             width=5,
             font=("Helvetica", font_size),
             justify="center",
-            #style="CenterEntry.TEntry",
+            style="CenterEntry.TEntry",
         )
         config_entry.grid(row=0, column=0, padx=10)
 
@@ -135,7 +141,7 @@ class Paparazzo(tk.Tk):
             width=5,
             font=("Helvetica", 22),
             justify="center",
-            #style="CenterEntry.TEntry",
+            style="CenterEntry.TEntry",
         )
         config_entry.grid(row=1, column=0, padx=10)
 
@@ -185,13 +191,16 @@ class Paparazzo(tk.Tk):
 
         # Abbrechen
         abort_btn = ttk.Button(
-            runoptions_frame, text="Abbrechen", command=self.on_abort, width=button_width
+            runoptions_frame,
+            text="Abbrechen",
+            command=self.on_abort,
+            width=button_width,
         )
         abort_btn.grid(row=1, column=0, padx=10, pady=10, ipadx=12, ipady=12)
 
         # System Elements
         system_frame = ttk.Frame(self)
-        system_frame.grid(row=0, column=3, sticky="ew")
+        system_frame.grid(row=0, rowspan=2, column=3, sticky="ew")
 
         # Schließen
         close_button = ttk.Button(
@@ -220,13 +229,6 @@ class Paparazzo(tk.Tk):
             popup, textvariable=temp_var, font=("Helvetica", 25), justify="center"
         )
         entry.grid(row=0, column=0, columnspan=3, pady=10)
-
-        def numpad_append(digit):
-            current = temp_var.get()
-            temp_var.set(current + str(digit))
-
-        def clear_value():
-            temp_var.set("")
 
         def confirm():
             val = temp_var.get()

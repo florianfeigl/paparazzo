@@ -4,11 +4,54 @@ import logging
 import os
 import time
 
+import board
+import busio
+import adafruit_ds3231
+
 from packages.config import LOGS_DIR
 
 # Globale Variable für GUI-Referenz
 gui_instance = None
 logger = None  # Globale Logger-Variable
+rtc = None     # Globale RTC-Instanz
+
+# RTC initialisieren
+def init_rtc():
+    global rtc
+    if rtc is None:
+        try:
+            i2c = busio.I2C(board.SCL, board.SDA)
+            rtc = adafruit_ds3231.DS3231(i2c)
+        except Exception as e:
+            print(f"Fehler bei der RTC-Initialisierung: {e}")
+            rtc = None
+
+# RTC-Zeit holen
+def get_rtc_time():
+    global rtc
+    if rtc is None:
+        init_rtc()
+    if rtc is None:
+        # Fallback auf Systemzeit
+        print("Warnung: RTC nicht verfügbar, benutze Systemzeit.")
+        return time.localtime()
+
+    try:
+        current_time = rtc.datetime
+        # Rekonstruiere struct_time mit korrektem tm_yday, falls -1
+        if current_time.tm_yday == -1:
+            corrected = time.struct_time((
+                current_time.tm_year, current_time.tm_mon, current_time.tm_mday,
+                current_time.tm_hour, current_time.tm_min, current_time.tm_sec,
+                current_time.tm_wday,
+                time.localtime().tm_yday,  # Dummy-Wert oder Berechnung
+                current_time.tm_isdst
+            ))
+            return corrected
+        return current_time
+    except Exception as e:
+        print(f"Fehler beim Auslesen der RTC: {e}")
+        return time.localtime()
 
 # TextWidgetHandler
 class TextWidgetHandler(logging.Handler):
@@ -20,7 +63,6 @@ class TextWidgetHandler(logging.Handler):
 
         if gui_instance and hasattr(gui_instance, "log_text"):
             try:
-                # Prüfe ob Widget noch existiert (noch nicht zerstört)
                 if gui_instance.log_text.winfo_exists():
                     gui_instance.after(0, self.safe_insert, msg)
                 else:
@@ -30,7 +72,6 @@ class TextWidgetHandler(logging.Handler):
                 print(f"Fehler beim Logging-Handler (Widget existiert nicht mehr): {e}")
                 print(msg)
         else:
-            # Kein GUI verfügbar, daher Terminal-Ausgabe
             print(msg)
 
     def safe_insert(self, msg):
@@ -43,57 +84,40 @@ class TextWidgetHandler(logging.Handler):
 
 
 def setup_logging():
-    """
-    Richtet den Hauptlogger "Paparazzo" ein, der alle Meldungen gleichzeitig
-      - in ein Protokoll-Logfile (ab INFO)
-      - in ein Error-Logfile (ab ERROR)
-      - in die GUI (über den TextWidgetHandler, ab DEBUG)
-    schreibt.
-    Gibt am Ende den konfigurierten Logger zurück.
-    """
-    global logger  # Greife auf die globale Logger-Variable zu
-
+    global logger
     if logger is not None:
-        return logger  # Falls der Logger schon existiert, einfach zurückgeben
+        return logger
 
-    # Haupt-Logger erstellen
+    # Zeitstempel von RTC holen
+    rtc_now = get_rtc_time()
+    try:
+        now_str = time.strftime("run_%Y%m%d_%H%M%S", rtc_now)
+    except ValueError as e:
+        print(f"⚠️ Fehler beim Formatieren der RTC-Zeit: {e}")
+        rtc_now = time.localtime()
+        now_str = time.strftime("run_%Y%m%d_%H%M%S", rtc_now)
+
     logger = logging.getLogger("Paparazzo")
     logger.setLevel(logging.DEBUG)  # Erfasst alle Meldungen ab DEBUG
 
-    # Damit wir keine doppelten Handler bekommen
-    for h in list(logger.handlers):
-        logger.removeHandler(h)
+    # Ein einziger FileHandler für alle Loglevel
+    log_filename = os.path.join(LOGS_DIR, f"log_{now_str}.log")
+    fh = logging.FileHandler(log_filename)
+    fh.setLevel(logging.DEBUG)
 
-    # Log-Dateinamen setzen: Protokoll & Error
-    now_str = time.strftime("run_%Y%m%d_%H%M%S")
-    protocol_filename = os.path.join(LOGS_DIR, f"protocol_{now_str}.log")
-    error_filename = os.path.join(LOGS_DIR, f"error_{now_str}.log")
-
-    # 1) FileHandler für alle Meldungen (INFO und höher)
-    fh = logging.FileHandler(protocol_filename)
-    fh.setLevel(logging.INFO)
-
-    # 2) FileHandler für Fehler (ERROR und höher)
-    eh = logging.FileHandler(error_filename)
-    eh.setLevel(logging.ERROR)
-
-    # 3) Handler für das GUI-Text-Widget
-    th = TextWidgetHandler()
-    th.setLevel(logging.DEBUG)  # Zeigt alles ab DEBUG auch in der GUI an
-
-    # Einen Formatter definieren, damit wir Datum/Zeit/Level dabei haben
+    # Formatter
     fmt = "[%(asctime)s] %(levelname)s: %(message)s"
     date_fmt = "%Y-%m-%d %H:%M:%S"
     formatter = logging.Formatter(fmt, datefmt=date_fmt)
-
-    # Formatter den Handlern zuweisen
     fh.setFormatter(formatter)
-    eh.setFormatter(formatter)
-    th.setFormatter(formatter)
 
-    # Handler beim Logger anhängen
+    # Handler hinzufügen
     logger.addHandler(fh)
-    logger.addHandler(eh)
+
+    # GUI-Handler
+    th = TextWidgetHandler()
+    th.setLevel(logging.DEBUG)
+    th.setFormatter(formatter)
     logger.addHandler(th)
 
     return logger
@@ -106,13 +130,10 @@ def set_gui_instance(gui):
 
 
 def log_message(msg, level="info"):
-    """
-    Loggt eine Nachricht auf verschiedenen Ebenen und gibt sie in die GUI aus.
-    """
     global logger
 
     if logger is None:
-        logger = setup_logging()  # Stelle sicher, dass der Logger initialisiert ist
+        logger = setup_logging()
 
     # Logging-Level festlegen
     log_levels = {

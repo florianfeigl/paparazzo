@@ -1,5 +1,10 @@
 #include "config.h"
+#include <Wire.h>
+#include <RTClib.h>
 #include <AccelStepper.h>
+
+// === RTC ===
+RTC_DS3231 rtc;
 
 // === Funktionsprototypen ===
 void waitForNextMoveCommand();
@@ -8,6 +13,7 @@ void handleTimeout();
 void resetSystemState();
 void stopAllMotors();
 void sendStatus(String status);
+String getTimestamp();
 
 // === AccelStepper-Objekte ===
 AccelStepper stepper_column(AccelStepper::DRIVER, STEP_PIN_COLUMN, DIR_PIN_COLUMN);
@@ -38,6 +44,14 @@ void setup() {
     Serial.begin(SERIAL_BAUD);
     Serial.flush();
 
+    if (!rtc.begin()) {
+        Serial.println("RTC nicht gefunden!");
+        while (1);
+    }
+
+    // Bei Erststart/Neusetzung entkommentieren 
+    // rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+
     setupSteppers();
     calculatePositions();
     setupPins();
@@ -49,11 +63,9 @@ void loop() {
     for (int run = 0; run < REPEATS; run++) {
         for (int currentRow = 0; currentRow < ROWS; currentRow++) {
             for (int currentColumn = 0; currentColumn < COLUMNS; currentColumn++) {
-                // Reihe entlang der Spalten fahren
-                moveToNextColumn(currentColumn, currentRow); // => <MOVE_COMPLETED>
+                moveToNextColumn(currentColumn, currentRow);
                 waitForNextMoveCommand();
             }
-            // 
             stepper_column.runToNewPosition(0);
             if (currentRow < ROWS - 1) {
                 moveToNextRow(currentRow + 1);
@@ -62,14 +74,13 @@ void loop() {
         returnToHome();
         waitForNextPassCommand();
 
-        Serial.println("✅ Run " + String(run + 1) + " finished. Pausing for " + String(PAUSE_MS) + " ms.");
+        Serial.println("✅ Run " + String(run + 1) + " finished at " + getTimestamp() + ". Pausing for " + String(PAUSE_MS) + " ms.");
         delay(PAUSE_MS);
     }
-    Serial.println("✅ ALL runs completed. Halting execution.");
+    Serial.println("✅ ALL runs completed at " + getTimestamp() + ". Halting execution.");
     while (true);
 }
 
-// === Initialisierungsfunktionen ===
 void setupSteppers() {
     stepper_column.setAcceleration(ACCEL);
     stepper_column.setMaxSpeed(MAX_SPEED);
@@ -97,7 +108,6 @@ void setupPins() {
     digitalWrite(enable_stepper_columns, LOW);
 }
 
-// === Bewegungsfunktionen ===
 void moveToNextColumn(int currentColumn, int currentRow) {
     Serial.println("Moving to column: " + String(currentColumn) + "/" + String(currentRow));
     stepper_column.runToNewPosition(positions_column[currentColumn]);
@@ -117,7 +127,6 @@ void returnToHome() {
     sendStatus("HOME_POSITION");
 }
 
-// === Serielle Kommunikationsfunktionen ===
 void waitForStartCommand() {
     serialBuffer = "";
     while (true) {
@@ -126,7 +135,7 @@ void waitForStartCommand() {
             serialBuffer.trim();
 
             if (serialBuffer == "START") {
-                Serial.println("✅ Command 'START' received.");
+                Serial.println("✅ Command 'START' received at " + getTimestamp() + ".");
                 break;
             } else {
                 Serial.println("❌ Non-functional input: " + serialBuffer);
@@ -146,10 +155,10 @@ void waitForNextMoveCommand() {
             serialBuffer.trim();
 
             if (serialBuffer == "NEXT_MOVE") {
-                Serial.println("✅ Command NEXT_MOVE received.");
-                return;  
+                Serial.println("✅ Command NEXT_MOVE received at " + getTimestamp() + ".");
+                return;
             } else if (serialBuffer == "ABORT") {
-                Serial.println("🛑 ABORT received! Shutting down.");
+                Serial.println("🛑 ABORT received at " + getTimestamp() + ". Shutting down.");
                 returnToHome();
                 stopAllMotors();
                 resetSystemState();
@@ -157,7 +166,7 @@ void waitForNextMoveCommand() {
                 return;
             } else {
                 Serial.println("❌ Non-functional input: " + serialBuffer);
-                serialBuffer = "";  // Zurücksetzen, um falsche Werte zu vermeiden
+                serialBuffer = "";
                 handleTimeout();
             }
         }
@@ -176,35 +185,34 @@ void waitForNextPassCommand() {
             serialBuffer.trim();
 
             if (serialBuffer == "NEXT_PASS") {
-                Serial.println("✅ Command 'NEXT_PASS' received.");
-                return;  
+                Serial.println("✅ Command 'NEXT_PASS' received at " + getTimestamp() + ".");
+                return;
             } else if (serialBuffer == "ABORT") {
-                Serial.println("🛑 ABORT received! Shutting down.");
+                Serial.println("🛑 ABORT received at " + getTimestamp() + ". Shutting down.");
                 returnToHome();
                 stopAllMotors();
                 resetSystemState();
                 sendStatus("ABORTED");
                 return;
             } else if (serialBuffer == "END") {
-                stopAllMotors();          
-                resetSystemState(); 
-                sendStatus("ENDED"); 
+                stopAllMotors();
+                resetSystemState();
+                sendStatus("ENDED");
                 return;
             } else {
                 Serial.println("❌ Non-functional input: " + serialBuffer);
-                serialBuffer = "";  // Zurücksetzen, um falsche Werte zu vermeiden
+                serialBuffer = "";
                 handleTimeout();
             }
         }
     }
 }
 
-// === Helper ===
 void resetSystemState() {
     currentRow = 0;
     currentColumn = 0;
     currentPass = 0;
-    Serial.println("✅ Systemzustand zurückgesetzt.");
+    Serial.println("✅ Systemzustand zurückgesetzt at " + getTimestamp() + ".");
 }
 
 void stopAllMotors() {
@@ -215,13 +223,23 @@ void stopAllMotors() {
 }
 
 void handleTimeout() {
-    Serial.println("⏰ TIMEOUT! Returning motors to home position and resetting system state.");
+    Serial.println("⏰ TIMEOUT at " + getTimestamp() + "! Returning motors to home position and resetting system state.");
     returnToHome();
     stopAllMotors();
     resetSystemState();
     sendStatus("TIMEOUT");
     return;
 }
+
 void sendStatus(String status) {
     Serial.println("<" + status + ">");
+}
+
+String getTimestamp() {
+    DateTime now = rtc.now();
+    char timestamp[20];
+    sprintf(timestamp, "%04d-%02d-%02d_%02d-%02d-%02d",
+            now.year(), now.month(), now.day(),
+            now.hour(), now.minute(), now.second());
+    return String(timestamp);
 }
