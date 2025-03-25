@@ -9,21 +9,8 @@
    - Raspberry Pi OS 12 (bookworm)
 
 ### Software          
-- arduino-cli
-    - <AccelStepper.h>
-    - <RTClib.h>
-    - <Wire.h>
-- python3.11
-    - os 
-    - time 
-    - Tkinter
-    - datetime 
-    - setuptools
-    - pkg_resources
-    - subprocess
-    - threading
-    - serial
-    - picamera2
+- arduino-cli: <AccelStepper.h>, <RTClib.h>, <Wire.h>
+- python3.11: os, time, Tkinter, atetime, setuptools, pkg_resources, subprocess, threading, serial, picamera2
 
 ### Hardware          
    - Raspberry Pi 4 Model B
