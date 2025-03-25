@@ -10,7 +10,7 @@
 
 ### Software          
 - arduino-cli: <AccelStepper.h>, <RTClib.h>, <Wire.h>
-- python3.11: os, time, Tkinter, atetime, setuptools, pkg_resources, subprocess, threading, serial, picamera2
+- python3.11: os, time, Tkinter, datetime, setuptools, pkg_resources, subprocess, threading, serial, picamera2
 
 ### Hardware          
    - Raspberry Pi 4 Model B
