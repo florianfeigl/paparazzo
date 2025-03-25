@@ -1,5 +1,5 @@
 # Paparazzo
-**Author**: Florian Feigl (florian.feigl@stud.plus.ac.at)
+**Author**: Florian Feigl (florian.feigl@stud.plus.ac.at) \
 **Supervisor**: Prof. Dr. Obermeyer (gerhard.obermeyer@plus.ac.at)
 
 ## Abstract
