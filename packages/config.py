@@ -16,7 +16,7 @@ FIRMWARE_DIR = os.path.join(BASE_DIR, "firmware")
 # Arduino
 ARDUINO_CLI_PATH = "arduino-cli"  # Pfad zur arduino-cli
 FQBN = "arduino:avr:uno"  # Board-Typ
-SERIAL_PORT = "/dev/ttyACM0"  # Arduino-Port (z. B. /dev/ttyACM0 für Linux)
+SERIAL_PORT = "/dev/ttyACM0"  # Arduino-Port (/dev/ttyACM0 für Linux)
 BAUD_RATE = 9600  # Muss zum Sketch passen
 TEMPLATE_FILE = os.path.join(BASE_DIR, "templates", "config_template.h")
 CONFIG_FILE = os.path.join(FIRMWARE_DIR, "config.h")

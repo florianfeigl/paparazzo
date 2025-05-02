@@ -74,10 +74,10 @@ void loop() {
         returnToHome();
         waitForNextPassCommand();
 
-        Serial.println("✅ Run " + String(run + 1) + " finished at " + getTimestamp() + ". Pausing for " + String(PAUSE_MS) + " ms.");
+        Serial.println("✅ Cycle " + String(run + 1) + " finished at " + getTimestamp() + ". Pausing for " + String(PAUSE_MS) + " ms.");
         delay(PAUSE_MS);
     }
-    Serial.println("✅ ALL runs completed at " + getTimestamp() + ". Halting execution.");
+    Serial.println("✅ ALL cycles completed at " + getTimestamp() + ". Run completed. Halting execution.");
     while (true);
 }
 
@@ -212,7 +212,7 @@ void resetSystemState() {
     currentRow = 0;
     currentColumn = 0;
     currentPass = 0;
-    Serial.println("✅ Systemzustand zurückgesetzt at " + getTimestamp() + ".");
+    Serial.println("✅ Systemzustand zurückgesetzt bei " + getTimestamp() + ".");
 }
 
 void stopAllMotors() {

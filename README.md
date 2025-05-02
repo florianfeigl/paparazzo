@@ -7,6 +7,7 @@
 
 ### Operating System  
    - Raspberry Pi OS 12 (bookworm)
+   - Usergroups: dialout
 
 ### Software          
 - arduino-cli: <AccelStepper.h>, <RTClib.h>, <Wire.h>
@@ -22,22 +23,7 @@
    - TB6600 Stepper Motor Drivers
    - Jumper cables
 
-## Lizenz & Nutzungshinweis
-Dieses Projekt wird unter der **GNU Affero General Public License v3.0 (AGPL-3.0)** veröffentlicht.  
-Das bedeutet, dass jeder den Code **frei nutzen, ändern und weitergeben** kann, solange alle Änderungen ebenfalls unter der AGPL-3.0 veröffentlicht werden.
-
-### Lehr- & Bildungsnutzung  
-Die Nutzung dieses Projekts für **Lehrzwecke, Forschung und akademische Zwecke** ist ausdrücklich **erlaubt und erwünscht**.  
-Studierende, Lehrende und Forschungseinrichtungen dürfen den Code ohne Einschränkungen für **didaktische und experimentelle Zwecke** verwenden.
-
-### Kommerzielle Nutzung  
-Für kommerzielle Nutzung oder Integrationen in proprietäre Systeme ist eine **separate kommerzielle Lizenz erforderlich**.  
-Unternehmen, die den Code nutzen möchten, ohne ihre Änderungen unter AGPL-3.0 offenzulegen, können eine kommerzielle Lizenz erwerben.  
-
-📩 **Kontakt für kommerzielle Lizenzen & Wartungsverträge:** [florian.feigl@stud.plus.ac.at]  
-
----
-
-© [2025] [Florian Feigl / Paparazzo] – Veröffentlicht unter der **AGPL-3.0**.  
-Die vollständige Lizenz kann hier eingesehen werden: [https://www.gnu.org/licenses/agpl-3.0.html](https://www.gnu.org/licenses/agpl-3.0.html)
-
+## Lizenz
+Dieses Projekt darf für persönliche, wissenschaftliche oder Bildungszwecke frei verwendet werden.  
+Kommerzielle Nutzung ist **nur mit vorheriger schriftlicher Genehmigung** des Autors gestattet.
+Siehe [LICENSE](./LICENSE) für Details.
