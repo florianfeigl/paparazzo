@@ -9,7 +9,8 @@ echo "[2/3] Create venv (disabled)"
 #source .venv/bin/activate
 
 echo "[3/3] Install Python package"
-pip install -e .
+pip install -r requirements.txt
+pip install .
 
 echo "Installation completed."
 #echo "  source .venv/bin/activate"
