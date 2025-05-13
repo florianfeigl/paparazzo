@@ -19,7 +19,7 @@ class CameraSerialManager:
     def __init__(self, gui=None):
         """Initialisiert Kamera und serielle Verbindung."""
         self.gui = gui
-        self.PASS_COUNT = 0  # Startwert
+        self.CYCLE_COUNT = 0  # Startwert
         self.MOVE_COUNT = 0  # Startwert
         self.picam = None
         self.serial_connection = None
@@ -52,17 +52,17 @@ class CameraSerialManager:
     def reset_move_count(self):
         self.MOVE_COUNT = 0
 
-    def increment_pass_count(self):
-        self.PASS_COUNT += 1
+    def increment_cycle_count(self):
+        self.CYCLE_COUNT += 1
 
-    def reset_pass_count(self):
-        self.PASS_COUNT = 0
+    def reset_cycle_count(self):
+        self.CYCLE_COUNT = 0
 
     def get_current_move_count(self):
         return self.MOVE_COUNT
 
-    def get_current_pass_count(self):
-        return self.PASS_COUNT
+    def get_current_cycle_count(self):
+        return self.CYCLE_COUNT
 
     # Kamera initialisieren
     def init_camera(self):
@@ -230,24 +230,24 @@ class CameraSerialManager:
                             self.take_photo()
 
                             if self.get_current_move_count() + 1 >= TOTAL_STATIONS:
-                                # Warte auf <PASS_COMPLETED> vom Arduino
+                                # Warte auf <CYCLE_COMPLETED> vom Arduino
                                 log_message(
-                                    "Alle Positionen erreicht, warte auf PASS_COMPLETED.",
+                                    "Alle Positionen erreicht, warte auf CYCLE_COMPLETED.",
                                     "info",
                                 )
                             else:
                                 self.increment_move_count()
                                 self.send_command("NEXT_MOVE")
 
-                        elif command == "PASS_COMPLETED":
-                            log_message("Arduino meldet PASS_COMPLETED.", "info")
+                        elif command == "CYCLE_COMPLETED":
+                            log_message("Arduino meldet CYCLE_COMPLETED.", "info")
                             log_message(
                                 f"Pausiere {self.get_pause_minutes()} Minuten bis zum nächsten Lauf.",
                                 "info",
                             )
-                            self.increment_pass_count()
+                            self.increment_cycle_count()
 
-                            if self.get_current_pass_count() >= self.get_repeats():
+                            if self.get_current_cycle_count() >= self.get_repeats():
                                 log_message(
                                     f"Alle Läufe ({self.get_repeats()}) abgeschlossen.",
                                     "info",
@@ -258,8 +258,8 @@ class CameraSerialManager:
                                 break
                             else:
                                 self.reset_move_count()
-                                self.setup_pass_directory()
-                                self.send_command("NEXT_PASS")
+                                self.setup_cycle_directory()
+                                self.send_command("NEXT_CYCLE")
 
                         elif command == "ABORTED":
                             log_message("Daten-Abbruch bestätigt (ABORTED).", "info")
@@ -290,12 +290,12 @@ class CameraSerialManager:
         log_message(f"Laufverzeichnis erstellt: {self.RUN_DIR}")
 
     # Rundenverzeichnis erstellen
-    def setup_pass_directory(self):
-        """Erstellt den Unterordner für den aktuellen Pass."""
-        self.PASS_FOLDER_NAME = f"pass_{self.PASS_COUNT:02d}"
-        self.CURRENT_PASS_DIR = os.path.join(self.RUN_DIR, self.PASS_FOLDER_NAME)
-        os.makedirs(self.CURRENT_PASS_DIR, exist_ok=True)
-        log_message(f"Rundenverzeichnis erstellt: {self.CURRENT_PASS_DIR}")
+    def setup_cycle_directory(self):
+        """Erstellt den Unterordner für den aktuellen Cycle."""
+        self.CYCLE_FOLDER_NAME = f"cycle_{self.CYCLE_COUNT:02d}"
+        self.CURRENT_CYCLE_DIR = os.path.join(self.RUN_DIR, self.CYCLE_FOLDER_NAME)
+        os.makedirs(self.CURRENT_CYCLE_DIR, exist_ok=True)
+        log_message(f"Rundenverzeichnis erstellt: {self.CURRENT_CYCLE_DIR}")
 
     # Position bestimmen
     def get_current_position(self):
@@ -331,7 +331,7 @@ class CameraSerialManager:
         timestamp = time.strftime("%Y%m%d_%H%M%S")
         col_value, row_value = self.get_current_position()
         filename = f"{timestamp}_{row_value}{col_value}.jpg"
-        filepath = os.path.join(self.CURRENT_PASS_DIR, filename)
+        filepath = os.path.join(self.CURRENT_CYCLE_DIR, filename)
 
         time.sleep(0.2)
 

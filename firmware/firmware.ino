@@ -8,7 +8,7 @@ RTC_DS3231 rtc;
 
 // === Funktionsprototypen ===
 void waitForNextMoveCommand();
-void waitForNextPassCommand();
+void waitForNextCycleCommand();
 void handleTimeout();
 void resetSystemState();
 void stopAllMotors();
@@ -33,7 +33,7 @@ long positions_column[COLUMNS];
 long positions_row[ROWS];
 
 // === System Variablen ===
-int currentPass = 0;
+int currentCycle = 0;
 int currentRow = 0;
 int currentColumn = 0;
 
@@ -72,7 +72,7 @@ void loop() {
             }
         }
         returnToHome();
-        waitForNextPassCommand();
+        waitForNextCycleCommand();
 
         Serial.println("✅ Cycle " + String(run + 1) + " finished at " + getTimestamp() + ". Pausing for " + String(PAUSE_MS) + " ms.");
         delay(PAUSE_MS);
@@ -173,8 +173,8 @@ void waitForNextMoveCommand() {
     }
 }
 
-void waitForNextPassCommand() {
-    sendStatus("PASS_COMPLETED");
+void waitForNextCycleCommand() {
+    sendStatus("CYCLE_COMPLETED");
 
     serialBuffer = "";
     unsigned long startMillis = millis();
@@ -184,8 +184,8 @@ void waitForNextPassCommand() {
             serialBuffer = Serial.readStringUntil('\n');
             serialBuffer.trim();
 
-            if (serialBuffer == "NEXT_PASS") {
-                Serial.println("✅ Command 'NEXT_PASS' received at " + getTimestamp() + ".");
+            if (serialBuffer == "NEXT_CYCLE") {
+                Serial.println("✅ Command 'NEXT_CYCLE' received at " + getTimestamp() + ".");
                 return;
             } else if (serialBuffer == "ABORT") {
                 Serial.println("🛑 ABORT received at " + getTimestamp() + ". Shutting down.");
@@ -211,7 +211,7 @@ void waitForNextPassCommand() {
 void resetSystemState() {
     currentRow = 0;
     currentColumn = 0;
-    currentPass = 0;
+    currentCycle = 0;
     Serial.println("✅ Systemzustand zurückgesetzt bei " + getTimestamp() + ".");
 }
 

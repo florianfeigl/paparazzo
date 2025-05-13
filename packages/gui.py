@@ -86,17 +86,17 @@ class Paparazzo(tk.Tk):
     def reset_move_count(self):
         self.MOVE_COUNT = 0
 
-    def increment_pass_count(self):
-        self.PASS_COUNT += 1
+    def increment_cycle_count(self):
+        self.CYCLE_COUNT += 1
 
-    def reset_pass_count(self):
-        self.PASS_COUNT = 0
+    def reset_cycle_count(self):
+        self.CYCLE_COUNT = 0
 
     def get_current_move_count(self):
         return self.MOVE_COUNT
 
-    def get_current_pass_count(self):
-        return self.PASS_COUNT
+    def get_current_cycle_count(self):
+        return self.CYCLE_COUNT
 
     # GUI aufbauen
     def create_widgets(self):
@@ -308,11 +308,11 @@ class Paparazzo(tk.Tk):
             log_message("Programmstart abgebrochen.", "error")
             return
 
-        self.manager.reset_pass_count()
+        self.manager.reset_cycle_count()
         self.manager.reset_move_count()
 
         self.manager.setup_run_directory()
-        self.manager.setup_pass_directory()
+        self.manager.setup_cycle_directory()
 
         log_message("Sende 'START' an Arduino...", "info")
         self.manager.send_command("START")
