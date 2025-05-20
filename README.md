@@ -13,8 +13,14 @@
 - arduino-cli: <AccelStepper.h>, <RTClib.h>, <Wire.h>
 - python3.11: os, time, Tkinter, datetime, setuptools, pkg_resources, subprocess, threading, serial, picamera2
 - Paparazzo
+
+##### Paparazzo GUI
 ![Paparazzo GUI](assets/gui.png)
+
+##### Configuration Panels
 ![Configuration](assets/config.png)
+
+##### Storing Structure
 ![Storing Structure](assets/folders.png)
 
 ### Core Hardware 
@@ -24,6 +30,8 @@
    - totem construction elements
    - Nema 17 Stepper Motors
    - TB6600 Stepper Motor Drivers
+
+##### Circuit plan
 ![Scheme](assets/Paparazzo_schem.png)
 
 ### Communication
