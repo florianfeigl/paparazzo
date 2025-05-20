@@ -38,7 +38,7 @@
 ![RPi-Arduino-Interaction](assets/rpi-arduino-interaction.png)
 
 ### In Action
-![Operating](assets/paparazzo-noaudio.mp4)
+![Video of Operation](assets/paparazzo-noaudio.mp4)
 
 ## Lizenz
 Dieses Projekt darf für persönliche, wissenschaftliche oder Bildungszwecke frei verwendet werden.  
