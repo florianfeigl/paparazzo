@@ -12,16 +12,25 @@
 ### Software          
 - arduino-cli: <AccelStepper.h>, <RTClib.h>, <Wire.h>
 - python3.11: os, time, Tkinter, datetime, setuptools, pkg_resources, subprocess, threading, serial, picamera2
+- Paparazzo
+![Paparazzo GUI](assets/gui.png)
+![Configuration](assets/config.png)
+![Storing Structure](assets/folders.png)
 
-### Hardware          
+### Core Hardware 
    - Raspberry Pi 4 Model B
-   - Raspberry Pi 4 5V/3A/15W power supply
    - Arduino Uno Rev3
-   - 2x 24V/2A power supply
+   - Touch Display
    - totem construction elements
    - Nema 17 Stepper Motors
    - TB6600 Stepper Motor Drivers
-   - Jumper cables
+![Scheme](assets/Paparazzo_schem.png)
+
+### Communication
+![RPi-Arduino-Interaction](assets/rpi-arduino-interaction.png)
+
+### In Action
+![Operating](assets/paparazzo-noaudio.mp4)
 
 ## Lizenz
 Dieses Projekt darf für persönliche, wissenschaftliche oder Bildungszwecke frei verwendet werden.  
